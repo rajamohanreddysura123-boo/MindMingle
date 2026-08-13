@@ -1,0 +1,253 @@
+rules_version = '2';
+
+// Security rules for the MindMingle (Tech Orbit) dev-dating app.
+// Schema:
+//   users/{uid}                          — profile docs (no photos; skills/bio/experience)
+//   likes/{fromUid}/sentTo/{toUid}        — outbound like markers
+//   incomingLikes/{toUid}/from/{fromUid}  — mirror written by the liker, read by the recipient
+//   matches/{matchId}                     — matchId = sorted "uidA_uidB", users: [uidA, uidB]
+//   matches/{matchId}/messages/{msgId}    — chat messages, participants only
+//   admins/{uid}                          — presence = that uid is an admin (Console, or the
+//                                            verifyEmailOtp Cloud Function for the reserved
+//                                            admin email — never writable by a client directly)
+//   bannedUids/{uid}                      — permanent tombstone for deleted/banned accounts
+//   appConfig/ads                         — AdMob settings for the Discover deck (read: any
+//                                            signed-in client; write: admin only)
+//   appConfig/plans                       — MindMingle+ price list, one row per country (read: any signed-in
+//                                            user; write: admin only, normally through the
+//                                            savePlanPricing Cloud Function which re-validates rows)
+//   subscriptions/{uid}                   — MindMingle+ plan state, written only by the Razorpay Cloud
+//                                            Functions (functions/src/razorpay.ts); the owner reads it
+//   subscriptions/{uid}/payments/{payId}  — one doc per captured payment, also Functions-only
+//   emailOtps/{email}                     — Cloud-Functions-only OTP state (functions/src/index.ts)
+//   mail/{docId}                          — Cloud-Functions-only, watched by the "Trigger Email" extension
+//   anonymousQueue/{uid}                  — one doc per user waiting for an anonymous partner;
+//                                            sessionId is claimed compare-and-set style by whoever pairs first
+//   anonymousSessions/{sessionId}         — participants: [uidA, uidB] for a live anonymous room
+//   anonymousSessions/{sessionId}/relay/{msgId}
+//                                         — transport only: the recipient deletes each doc right
+//                                            after reading it, and the room is purged on exit
+//   anonymousAuditLog/{sessionId}_{uid}   — who talked to whom (uids only, never message text),
+//                                            append-only for abuse investigations
+//   users/{uid}/devices/{token}           — FCM push tokens, one doc per device (owner-only)
+//   notificationPrefs/{uid}               — per-category push switches (owner-only); missing = all on
+//   supportChats/{uid}                    — one Help & Support thread per user with the MindMingle team
+//   supportChats/{uid}/messages/{msgId}   — senderId is either that uid (the user) or "support"
+//                                            (an admin, via the admin-desktop-only inbox)
+//
+// Deploy with: firebase deploy --only firestore:rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isMatchParticipant(matchId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/matches/$(matchId)).data.users;
+    }
+
+    // Admin = a doc exists at admins/{their uid}. That doc can only ever be
+    // created/removed via the Firebase Console or the verifyEmailOtp Cloud
+    // Function (Admin SDK, bypasses these rules) — never through a client
+    // write, admin or not — so there is no in-app privilege-escalation path.
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // AdMob settings for the Discover deck (ad frequency, gate duration, ad unit ids).
+    // Every signed-in client reads it at Discover load; only an admin can retune it, so
+    // no user can switch ads off for themselves or point the app at their own ad units.
+    match /appConfig/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // MindMingle+ subscription state. Only the Razorpay Cloud Functions write here (Admin SDK,
+    // bypasses these rules) — the plan is granted after a server-side signature check, so
+    // a client can never mark itself premium (which is also what turns ads off) by writing
+    // its own doc. The owner and admins may read it.
+    match /subscriptions/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+
+      match /payments/{paymentId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // OTP state and outbound mail: written only by Cloud Functions (Admin SDK,
+    // bypasses these rules) — never readable or writable by any client.
+    match /emailOtps/{email} {
+      allow read, write: if false;
+    }
+
+    match /mail/{docId} {
+      allow read, write: if false;
+    }
+
+    // Permanent ban tombstone: survives profile deletion, so a deleted/banned
+    // uid is blocked forever even though its bare Auth credential still exists
+    // (only a server-side Cloud Function can truly delete a Firebase Auth user).
+    match /bannedUids/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Profiles: any signed-in user can read (needed for Discover, match headers,
+    // chat headers); only the profile owner can create/update it — except the
+    // isDisabled flag, which only an admin may flip (stops a client from just
+    // writing isDisabled:false to their own doc to self-reinstate).
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid);
+      allow update: if (isOwner(uid) &&
+          request.resource.data.isDisabled == resource.data.isDisabled) || isAdmin();
+      allow delete: if isAdmin();
+
+      // Push tokens. Private to their owner — the notification functions read them with the
+      // Admin SDK, and nobody else has any business enumerating someone's devices.
+      match /devices/{token} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Per-category push switches. Owner-only; a missing doc means every category is on, so a
+    // user who never opens the settings still gets their messages.
+    match /notificationPrefs/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Outbound likes: only the liker can write into their own "sentTo" list.
+    // Read is restricted to the liker (not exposed to the target directly).
+    // Admin delete needed for cascade cleanup on account deletion.
+    match /likes/{fromUid}/sentTo/{toUid} {
+      allow read: if isOwner(fromUid) || isAdmin();
+      allow create: if isOwner(fromUid);
+      allow update: if false;
+      allow delete: if isOwner(fromUid) || isAdmin();
+    }
+
+    // Incoming likes mirror: written by the liker (fromUid) into the
+    // recipient's (toUid) mailbox, but only the recipient can read it.
+    // Admin delete needed for cascade cleanup on account deletion.
+    match /incomingLikes/{toUid}/from/{fromUid} {
+      allow read: if isOwner(toUid) || isAdmin();
+      allow create: if isOwner(fromUid);
+      allow update: if false;
+      allow delete: if isOwner(toUid) || isAdmin();
+    }
+
+    // Matches: only the two participants (or an admin) can read; a match can
+    // only be created by one of the two users it names, and the users list is
+    // immutable after creation (only lastMessage/lastMessageAt can change,
+    // and only by a participant). Admin delete needed for cascade cleanup.
+    match /matches/{matchId} {
+      allow read: if isSignedIn() && (request.auth.uid in resource.data.users || isAdmin());
+      allow create: if isSignedIn() &&
+        request.auth.uid in request.resource.data.users &&
+        request.resource.data.users.size() == 2;
+      allow update: if isMatchParticipant(matchId) &&
+        request.resource.data.users == resource.data.users;
+      allow delete: if isAdmin();
+
+      // Messages: only the two match participants (or an admin) can read/send;
+      // admin delete needed for cascade cleanup on account deletion.
+      match /messages/{messageId} {
+        allow read: if isMatchParticipant(matchId) || isAdmin();
+        allow create: if isMatchParticipant(matchId) &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Anonymous chat queue. Any signed-in user can read the waiting list (that is
+    // how pairing finds a partner), but a waiting slot can only be created by its
+    // own owner. The sessionId field is a compare-and-set claim: a third party may
+    // write it exactly once, and only while it is still empty, so two clients
+    // racing for the same partner cannot both win.
+    match /anonymousQueue/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid) && request.resource.data.sessionId == "";
+      allow update: if isOwner(uid) ||
+        (isSignedIn() &&
+          resource.data.sessionId == "" &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.sessionId != "");
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    function isAnonymousParticipant(sessionId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/anonymousSessions/$(sessionId)).data.participants;
+    }
+
+    // Anonymous rooms are readable only by their two participants — admins
+    // included have no read access, since the whole point is that nobody can
+    // reconstruct the conversation. Only the audit log below survives a session.
+    match /anonymousSessions/{sessionId} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow create: if isSignedIn() &&
+        request.auth.uid in request.resource.data.participants &&
+        request.resource.data.participants.size() == 2;
+      allow update: if isAnonymousParticipant(sessionId) &&
+        request.resource.data.participants == resource.data.participants;
+      allow delete: if isAnonymousParticipant(sessionId);
+
+      // Pure transport for ephemeral messages: written by the sender, deleted by
+      // the recipient as soon as it lands on their device. Nothing is ever updated.
+      match /relay/{messageId} {
+        allow read: if isAnonymousParticipant(sessionId);
+        allow create: if isAnonymousParticipant(sessionId) &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isAnonymousParticipant(sessionId);
+      }
+    }
+
+    // Support chat: one thread per user with the MindMingle team. The owner reads/writes only their own
+    // thread; an admin (the admin-desktop-only inbox) can read/write any thread — that's how
+    // support replies happen. Message senderId must be the caller's own uid, or "support" for
+    // an admin reply.
+    match /supportChats/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if (isOwner(uid) && request.resource.data.senderId == request.auth.uid) ||
+          (isAdmin() && request.resource.data.senderId == "support");
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Who spoke to whom, by uid only — no message text ever reaches this
+    // collection. Written by a participant when they close a room, readable
+    // and removable only by an admin investigating a report.
+    match /anonymousAuditLog/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() &&
+        request.auth.uid in request.resource.data.participants &&
+        request.resource.data.closedBy == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+  }
+}

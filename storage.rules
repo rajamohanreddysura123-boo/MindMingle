@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Storage rules for MindMingle (Tech Orbit) profile photos.
+// Schema: users/{uid}/photos/{photoId} — up to 5 optional photos per profile.
+//
+// Deploy with: firebase deploy --only storage
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/photos/{photoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

@@ -1,0 +1,169 @@
+{
+  "sections": [
+    {
+      "title": "Basic Information",
+      "subtitle": "Age is calculated from your date of birth.",
+      "fields": [
+        { "key": "dateOfBirth", "label": "Date of birth", "type": "date", "placeholder": "YYYY-MM-DD" },
+        {
+          "key": "gender",
+          "label": "Gender",
+          "type": "single",
+          "options": ["Woman", "Man", "Non-binary", "Transgender", "Other", "Prefer not to say"]
+        },
+        {
+          "key": "pronouns",
+          "label": "Pronouns",
+          "type": "single",
+          "options": ["She / Her", "He / Him", "They / Them", "She / They", "He / They", "Other"]
+        },
+        {
+          "key": "languages",
+          "label": "Languages spoken",
+          "type": "multi",
+          "maxSelect": 8,
+          "options": [
+            "Abkhazian", "Afar", "Afrikaans", "Akan", "Albanian", "Amharic", "Arabic", "Aragonese",
+            "Armenian", "Assamese", "Avaric", "Avestan", "Aymara", "Azerbaijani", "Bambara", "Bashkir",
+            "Basque", "Belarusian", "Bengali", "Bihari", "Bislama", "Bosnian", "Breton", "Bulgarian",
+            "Burmese", "Catalan", "Chamorro", "Chechen", "Chichewa", "Chinese", "Chuvash", "Cornish",
+            "Corsican", "Cree", "Croatian", "Czech", "Danish", "Divehi", "Dutch", "Dzongkha",
+            "English", "Esperanto", "Estonian", "Ewe", "Faroese", "Fijian", "Finnish", "French",
+            "Fulah", "Galician", "Georgian", "German", "Greek", "Guarani", "Gujarati", "Haitian Creole",
+            "Hausa", "Hebrew", "Herero", "Hindi", "Hiri Motu", "Hungarian", "Icelandic", "Ido",
+            "Igbo", "Indonesian", "Interlingua", "Interlingue", "Inuktitut", "Inupiaq", "Irish", "Italian",
+            "Japanese", "Javanese", "Kalaallisut", "Kannada", "Kanuri", "Kashmiri", "Kazakh", "Khmer",
+            "Kikuyu", "Kinyarwanda", "Kirghiz", "Komi", "Kongo", "Korean", "Kurdish", "Kwanyama",
+            "Lao", "Latin", "Latvian", "Limburgish", "Lingala", "Lithuanian", "Luba-Katanga", "Luxembourgish",
+            "Macedonian", "Malagasy", "Malay", "Malayalam", "Maltese", "Manx", "Maori", "Marathi",
+            "Marshallese", "Mongolian", "Nauru", "Navajo", "Ndonga", "Nepali", "North Ndebele", "Northern Sami",
+            "Norwegian", "Norwegian Bokmål", "Norwegian Nynorsk", "Nuosu", "Occitan", "Ojibwe", "Oriya", "Oromo",
+            "Ossetian", "Pali", "Panjabi", "Pashto", "Persian", "Polish", "Portuguese", "Quechua",
+            "Romanian", "Romansh", "Rundi", "Russian", "Samoan", "Sango", "Sanskrit", "Sardinian",
+            "Scottish Gaelic", "Serbian", "Shona", "Sindhi", "Sinhala", "Slovak", "Slovenian", "Somali",
+            "South Ndebele", "Southern Sotho", "Spanish", "Sundanese", "Swahili", "Swati", "Swedish", "Tagalog",
+            "Tahitian", "Tajik", "Tamil", "Tatar", "Telugu", "Thai", "Tibetan", "Tigrinya",
+            "Tonga", "Tsonga", "Tswana", "Turkish", "Turkmen", "Twi", "Uighur", "Ukrainian",
+            "Urdu", "Uzbek", "Venda", "Vietnamese", "Volapük", "Walloon", "Welsh", "Western Frisian",
+            "Wolof", "Xhosa", "Yiddish", "Yoruba", "Zhuang", "Zulu"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "About Me",
+      "fields": [
+        { "key": "company", "label": "Company", "type": "text", "optional": true, "placeholder": "Where you work" },
+        {
+          "key": "education",
+          "label": "Education",
+          "type": "single",
+          "options": ["High school", "In college", "Undergraduate degree", "Postgraduate degree", "Doctorate", "Trade school", "Self-taught", "Other"]
+        },
+        { "key": "college", "label": "College / University", "type": "text", "optional": true, "placeholder": "Where you studied" },
+        { "key": "currentCity", "label": "Current city", "type": "text", "placeholder": "Where you live now" },
+        { "key": "heightCm", "label": "Height (cm)", "type": "number", "placeholder": "e.g. 172" },
+        {
+          "key": "zodiac",
+          "label": "Zodiac sign",
+          "type": "single",
+          "optional": true,
+          "options": ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
+        }
+      ]
+    },
+    {
+      "title": "Lifestyle",
+      "fields": [
+        { "key": "drinking", "label": "Drinking", "type": "single", "options": ["Never", "Sometimes", "Often"] },
+        { "key": "smoking", "label": "Smoking", "type": "single", "options": ["Never", "Sometimes", "Often"] },
+        { "key": "exercise", "label": "Exercise", "type": "single", "options": ["Never", "Sometimes", "Regularly"] },
+        { "key": "diet", "label": "Diet", "type": "single", "options": ["Vegetarian", "Non-vegetarian", "Vegan", "Eggetarian", "Other"] },
+        { "key": "pets", "label": "Pets", "type": "single", "options": ["Have pets", "Don't have pets", "Want pets"] },
+        { "key": "sleepSchedule", "label": "Sleep schedule", "type": "single", "optional": true, "options": ["Early bird", "Night owl", "Flexible"] },
+        { "key": "children", "label": "Children", "type": "single", "options": ["Have children", "Don't have children", "Want children", "Don't want children"] },
+        { "key": "livingSituation", "label": "Living situation", "type": "single", "options": ["Alone", "With family", "With roommates", "Other"] }
+      ]
+    },
+    {
+      "title": "Dating Preferences",
+      "subtitle": "This is what your matches are built on.",
+      "fields": [
+        { "key": "interestedIn", "label": "Interested in", "type": "single", "options": ["Men", "Women", "Everyone", "Non-binary people"] },
+        { "key": "preferredMinAge", "label": "Preferred minimum age", "type": "number", "placeholder": "18" },
+        { "key": "preferredMaxAge", "label": "Preferred maximum age", "type": "number", "placeholder": "60" },
+        { "key": "preferredDistanceKm", "label": "Preferred distance (km)", "type": "number", "placeholder": "e.g. 100" },
+        { "key": "preferredLocation", "label": "Preferred location", "type": "text", "optional": true, "placeholder": "City or region" },
+        {
+          "key": "relationshipIntention",
+          "label": "Relationship intention",
+          "type": "single",
+          "options": ["Long-term relationship", "Marriage", "Casual dating", "Short-term relationship", "Friendship", "Still figuring it out"]
+        },
+        { "key": "openToLongDistance", "label": "Open to long-distance", "type": "single", "options": ["Yes", "No"] },
+        { "key": "openToRelocation", "label": "Open to relocation", "type": "single", "options": ["Yes", "No"] }
+      ]
+    },
+    {
+      "title": "Interests",
+      "subtitle": "Pick 5–10 that actually sound like you.",
+      "fields": [
+        {
+          "key": "interests",
+          "label": "Interests",
+          "type": "multi",
+          "maxSelect": 10,
+          "options": [
+            "Movies", "Music", "Travel", "Food", "Photography", "Gaming", "Fitness", "Sports",
+            "Reading", "Dancing", "Cooking", "Art", "Technology", "Nature", "Pets", "Shopping",
+            "Coffee", "Hiking", "Yoga", "Startups", "Open Source", "Board Games", "Cycling", "Anime",
+            "Fashion", "Writing", "Podcasts", "Volunteering", "Meditation", "Camping", "Swimming",
+            "Running", "Cars", "Astronomy", "History", "Comedy", "Theatre", "Museums", "Beaches", "Live Concerts"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Personality",
+      "fields": [
+        { "key": "personalityType", "label": "I'm usually...", "type": "single", "options": ["Introvert", "Extrovert", "Ambivert"] },
+        {
+          "key": "communicationStyle",
+          "label": "My communication style",
+          "type": "multi",
+          "maxSelect": 4,
+          "options": ["Texting", "Calls", "Video calls", "In-person"]
+        },
+        {
+          "key": "idealFirstDate",
+          "label": "My ideal first date",
+          "type": "single",
+          "options": ["Coffee", "Dinner", "Movie", "Walk", "Adventure", "Something spontaneous"]
+        }
+      ]
+    },
+    {
+      "title": "Values",
+      "fields": [
+        { "key": "politicalViews", "label": "Political views", "type": "single", "optional": true, "options": ["Liberal", "Moderate", "Conservative", "Apolitical", "Other", "Prefer not to say"] },
+        { "key": "familyImportance", "label": "Family importance", "type": "single", "options": ["Very important", "Important", "Somewhat important", "Not important"] },
+        { "key": "marriagePreference", "label": "Marriage preference", "type": "single", "options": ["Want to marry", "Open to marriage", "Don't want to marry", "Still figuring it out"] },
+        { "key": "childrenPreference", "label": "Children preference", "type": "single", "options": ["Want children", "Open to children", "Don't want children", "Still figuring it out"] },
+        {
+          "key": "relationshipExpectations",
+          "label": "Relationship expectations",
+          "type": "multi",
+          "maxSelect": 5,
+          "options": ["Emotional support", "Shared goals", "Independence", "Daily contact", "Slow and steady", "Adventure together", "Building a family"]
+        },
+        {
+          "key": "importantValues",
+          "label": "Important values",
+          "type": "multi",
+          "maxSelect": 6,
+          "options": ["Honesty", "Kindness", "Ambition", "Loyalty", "Humour", "Respect", "Curiosity", "Faith", "Independence", "Empathy", "Discipline", "Generosity"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+package com.rajamohan.mindmingle.domain.model
+
+import com.rajamohan.mindmingle.data.remote.dto.UserDto
+
+data class User(
+    val uid: String,
+    val phoneNumber: String = "",
+    val name: String = "",
+    val email: String = "",
+    val avatarUrl: String = "",
+    val photoUrls: List<String> = emptyList(),
+    val isVerified: Boolean = true,
+    val verificationProgress: Int = 76,
+    val bio: String = "",
+    val occupation: String = "",
+    val interests: List<String> = emptyList(),
+    val experienceLevel: String = "",
+    val lookingFor: String = "",
+    val githubUrl: String = "",
+    val portfolioLinks: List<String> = emptyList(),
+    val age: Int = 0,
+    val location: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val isProfileComplete: Boolean = false,
+    val isDisabled: Boolean = false,
+    val createdAt: Long = 0L,
+    val details: Map<String, String> = emptyMap(),
+    val selections: Map<String, List<String>> = emptyMap()
+)
+
+fun UserDto.toDomain(): User = User(
+    uid = uid,
+    phoneNumber = phoneNumber,
+    name = name,
+    email = email,
+    avatarUrl = avatarUrl,
+    photoUrls = photoUrls,
+    isVerified = true,
+    verificationProgress = 76,
+    bio = bio,
+    occupation = occupation,
+    interests = interests,
+    experienceLevel = experienceLevel,
+    lookingFor = lookingFor,
+    githubUrl = githubUrl,
+    portfolioLinks = portfolioLinks,
+    age = age,
+    location = location,
+    latitude = latitude,
+    longitude = longitude,
+    isProfileComplete = isProfileComplete,
+    isDisabled = isDisabled,
+    createdAt = createdAt,
+    details = details,
+    selections = selections
+)
+
+fun User.toDto(createdAt: Long = this.createdAt): UserDto = UserDto(
+    uid = uid,
+    phoneNumber = phoneNumber,
+    name = name,
+    email = email,
+    avatarUrl = avatarUrl,
+    photoUrls = photoUrls,
+    bio = bio,
+    occupation = occupation,
+    interests = interests,
+    experienceLevel = experienceLevel,
+    lookingFor = lookingFor,
+    githubUrl = githubUrl,
+    portfolioLinks = portfolioLinks,
+    age = age,
+    location = location,
+    latitude = latitude,
+    longitude = longitude,
+    isProfileComplete = isProfileComplete,
+    isDisabled = isDisabled,
+    createdAt = createdAt,
+    details = details,
+    selections = selections
+)

@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "532395068238",
+    "firebase_url": "https://tech-connect-44987-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "tech-connect-44987",
+    "storage_bucket": "tech-connect-44987.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532395068238:android:b22d12453964506bf46c1f",
+        "android_client_info": {
+          "package_name": "com.rajamohan.mindmingle"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "532395068238-v7pgf4e0h9b9ig05u246p57j3tlngd1t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rajamohan.mindmingle",
+            "certificate_hash": "641faf933d56c05fc43392bc1723313a15a23eba"
+          }
+        },
+        {
+          "client_id": "532395068238-pi67igb7k1ht578l3i5puncvmn8kl2ab.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWyx_YOnFTCCNlFkWMlrOjtrc9cF8VgLc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "532395068238-pi67igb7k1ht578l3i5puncvmn8kl2ab.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "532395068238-bqkouqodui66bgiaef1k7gec1to65ah9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.rajamohan.mindmingle"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
