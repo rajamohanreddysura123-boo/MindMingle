@@ -15,6 +15,12 @@ struct iOSApp: App {
         // Hands the Razorpay SDK to the shared Kotlin payment layer. No-op until the
         // Razorpay package is added to this target — see RazorpayBridge.swift.
         RazorpayBridge.install()
+        // Google Sign-In. Until the GoogleSignIn package is added, sign-in reports that it is
+        // unavailable rather than failing obscurely — see GoogleAuthBridge.swift.
+        GoogleAuthBridge.install()
+        // Push. No-op until FirebaseMessaging is added to this target and an APNs key is uploaded
+        // in the Firebase Console — see PushBridge.swift.
+        PushBridge.install()
     }
 
     var body: some Scene {

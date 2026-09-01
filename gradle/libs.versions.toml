@@ -21,6 +21,9 @@ firebaseKotlinSdk = "2.5.0"
 firebaseBom = "33.14.0"
 googleServices = "4.4.3"
 googleAds = "25.4.0"
+# User Messaging Platform — the consent form AdMob requires for EEA/UK users. Versioned
+# separately from the ads SDK, which only pulls it in transitively.
+googleUmp = "3.2.0"
 mlkitFaceDetection = "16.1.7"
 junit = "4.13.2"
 kotlin = "2.4.10"
@@ -79,6 +82,7 @@ play-services-auth = { module = "com.google.android.gms:play-services-auth", ver
 # monolithic com.google.android.play:core, which is unusable on targetSdk 31+.
 play-app-update = { module = "com.google.android.play:app-update", version.ref = "playAppUpdate" }
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "googleAds" }
+google-ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "googleUmp" }
 mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "mlkitFaceDetection" }
 razorpay-checkout = { module = "com.razorpay:checkout", version.ref = "razorpay" }
 # The checkout wrapper POM asks for standard-core "LATEST"; pinning it keeps builds reproducible.

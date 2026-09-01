@@ -25,6 +25,21 @@ actual object AdsPlatform {
         IosAdHost.initializeSdk()
     }
 
+    /**
+     * Handed to the Swift bridge, which owns the UMP SDK for the same reason it owns the ads SDK:
+     * the framework is added in Xcode, not linked from Gradle. Until that bridge exists no ad is
+     * served on iOS either, so there is nothing to gather consent for.
+     */
+    actual suspend fun requestConsent() {
+        if (!IosAdHost.isBridgeInstalled) return
+
+        suspendCancellableCoroutine { continuation ->
+            IosAdHost.gatherConsent {
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+        }
+    }
+
     actual suspend fun showInterstitial(unitId: String): Boolean {
         if (!IosAdHost.isBridgeInstalled) return false
         initialize()

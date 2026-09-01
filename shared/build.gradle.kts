@@ -60,6 +60,9 @@ kotlin {
             // Google Mobile Ads (AdMob). Android-only artifact — iOS goes through
             // IosAdHost/AdMobBridge.swift, desktop has no SDK at all.
             implementation(libs.play.services.ads)
+            // The consent form that has to run before a personalised ad is requested. Only
+            // required for EEA/UK users, but the SDK decides who those are, not the app.
+            implementation(libs.google.ump)
             // ML Kit Face Detection — gates profile photo uploads to images with a detectable
             // face (FaceDetector.android.kt). Android-only artifact; no ML Kit SDK exists for
             // iOS/desktop Kotlin targets, so those actuals skip the check (see FaceDetector.*.kt).

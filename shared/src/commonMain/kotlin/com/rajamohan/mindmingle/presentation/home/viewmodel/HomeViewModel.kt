@@ -140,6 +140,10 @@ internal class HomeViewModel(
             val config = getAdConfigUseCase()
             _uiState.update { it.copy(adConfig = config) }
             if (config.isServableHere() && AdsPlatform.isSupported && !_uiState.value.isPremium) {
+                // Consent first, always. Requesting an ad before the form has been answered is
+                // the thing Google's policy actually prohibits, and the SDK returns immediately
+                // for the users — most of them — who need no form at all.
+                AdsPlatform.requestConsent()
                 AdsPlatform.initialize()
             }
         }

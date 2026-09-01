@@ -2,7 +2,7 @@
   "name": "mindmingle_backend_services",
   "description": "Cloud Functions for MindMingle — Discover feed filtering, run server-side",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {

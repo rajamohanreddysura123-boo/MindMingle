@@ -21,6 +21,7 @@ object IosAdHost {
     private var initializer: (() -> Unit)? = null
     private var bannerFactory: ((String) -> UIView)? = null
     private var interstitialPresenter: ((String, (Boolean) -> Unit) -> Unit)? = null
+    private var consentGatherer: ((() -> Unit) -> Unit)? = null
 
     /**
      * Called from Swift at app start.
@@ -29,15 +30,20 @@ object IosAdHost {
      * @param makeBanner builds a loaded 300x250 GADBannerView for the given ad unit id.
      * @param presentInterstitial loads + presents an interstitial and invokes its callback with
      *   true once the user dismisses it, false when it could not be shown.
+     * @param gatherConsent runs the UMP consent flow, showing a form only where one is required,
+     *   and calls back once the decision is known. Optional: a bridge built before consent
+     *   existed simply passes nothing and the callback fires straight away.
      */
     fun install(
         initialize: () -> Unit,
         makeBanner: (String) -> UIView,
-        presentInterstitial: (String, (Boolean) -> Unit) -> Unit
+        presentInterstitial: (String, (Boolean) -> Unit) -> Unit,
+        gatherConsent: ((() -> Unit) -> Unit)? = null
     ) {
         initializer = initialize
         bannerFactory = makeBanner
         interstitialPresenter = presentInterstitial
+        consentGatherer = gatherConsent
         isBridgeInstalled = true
     }
 
@@ -46,6 +52,15 @@ object IosAdHost {
     }
 
     internal fun makeBannerView(unitId: String): UIView? = bannerFactory?.invoke(unitId)
+
+    internal fun gatherConsent(onFinished: () -> Unit) {
+        val gatherer = consentGatherer
+        if (gatherer == null) {
+            onFinished()
+            return
+        }
+        gatherer(onFinished)
+    }
 
     internal fun present(unitId: String, onFinished: (Boolean) -> Unit) {
         val presenter = interstitialPresenter

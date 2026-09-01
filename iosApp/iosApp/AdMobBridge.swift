@@ -19,6 +19,9 @@ import GoogleMobileAds
    2. Info.plist: add `GADApplicationIdentifier` = your AdMob iOS app id
       (test value: ca-app-pub-3940256099942544~1458002511). The SDK crashes on launch without it.
    3. Info.plist: add `NSUserTrackingUsageDescription` if you request ATT consent.
+   4. The UMP consent SDK ships inside the same Swift package, so `gatherConsent` below needs no
+      extra dependency. Configure the message in AdMob > Privacy & messaging first, or the form
+      never appears and European users are served nothing.
 
  Until step 1 is done, `canImport(GoogleMobileAds)` is false, the bridge is never installed,
  and the Discover deck simply serves no ads on iOS.
@@ -39,10 +42,52 @@ enum AdMobBridge {
                 InterstitialPresenter.shared.present(unitId: unitId) { shown in
                     onFinished(KotlinBoolean(bool: shown))
                 }
+            },
+            gatherConsent: { onFinished in
+                gatherConsent(onFinished: onFinished)
             }
         )
         #endif
     }
+
+    #if canImport(GoogleMobileAds)
+    /**
+     Runs the UMP consent flow before any ad is requested.
+
+     Google requires a consent mechanism for users in the EEA and the UK, and serves little or
+     nothing to them without one. Which users need a form is decided by the SDK from their
+     location — this never guesses — and the answer is remembered across launches, so anyone who
+     has already decided sees nothing.
+
+     Errors are swallowed deliberately: a consent check that cannot reach the network must not
+     stop Discover from loading. The SDK then serves non-personalised ads or none, which is the
+     right conservative outcome.
+     */
+    private static func gatherConsent(onFinished: @escaping () -> Void) {
+        let parameters = RequestParameters()
+
+        ConsentInformation.shared.requestConsentInfoUpdate(with: parameters) { error in
+            if let error {
+                print("AdMobBridge: consent info update failed — \(error.localizedDescription)")
+                onFinished()
+                return
+            }
+
+            guard let root = topViewController() else {
+                onFinished()
+                return
+            }
+
+            // Shows a form only when one is required and unanswered; otherwise returns at once.
+            ConsentForm.loadAndPresentIfRequired(from: root) { formError in
+                if let formError {
+                    print("AdMobBridge: consent form failed — \(formError.localizedDescription)")
+                }
+                onFinished()
+            }
+        }
+    }
+    #endif
 
     #if canImport(GoogleMobileAds)
     /// A 300x250 unit sized to match the Compose ad card slot.

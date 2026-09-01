@@ -5,6 +5,12 @@ actual object GoogleAuthLauncher {
         onSuccess: (email: String, name: String) -> Unit,
         onError: (message: String) -> Unit
     ) {
-        onError("Google Sign-In on iOS requires GIDSignIn configured in Xcode")
+        IosGoogleAuthHost.launch { email, name, error ->
+            when {
+                error != null -> onError(error)
+                email.isBlank() -> onError("Google Sign-In returned no account")
+                else -> onSuccess(email, name)
+            }
+        }
     }
 }

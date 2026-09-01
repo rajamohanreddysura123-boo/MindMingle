@@ -21,6 +21,20 @@ expect object AdsPlatform {
     fun initialize()
 
     /**
+     * Gathers advertising consent before any ad is requested, showing the form when one is
+     * required, and returns once the decision is known.
+     *
+     * This is not a nicety. Google requires a consent mechanism for users in the EEA and the UK,
+     * and without one it limits or stops serving to them — so an app with any European users and
+     * no consent flow loses that inventory rather than merely risking a policy note. Which users
+     * need a form is decided by the SDK from their location, not by the app.
+     *
+     * Consent is asked for once and remembered by the SDK across launches; a user who has already
+     * answered sees nothing. Everywhere the requirement does not apply, this returns immediately.
+     */
+    suspend fun requestConsent()
+
+    /**
      * Loads and presents a full-screen interstitial, suspending until the user dismisses it.
      * Returns false when no ad could be shown (no fill, no network, unsupported platform) —
      * the caller must then let the user continue rather than trapping them on a dead gate.

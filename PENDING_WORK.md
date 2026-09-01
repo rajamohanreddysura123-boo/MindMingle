@@ -198,6 +198,34 @@ only. Worth a pass on a real phone:
 1.2, and all of Phase 2 and Phase 3.1-3.2. Every target compiles and `:androidApp:assembleDebug`
 passes; none of it has run on a device. What remains below is what needs you.
 
+## Production readiness (2026-09-01, second pass)
+
+Done since the last pass:
+- `recordPaymentFailure` reconstructed from its caller's contract and the `paymentAttempts` rules,
+  after the compiled `lib/razorpay.js` turned out to predate it too. The functions codebase
+  compiles again, and `onLikeReceived` / `onChatMessageCreated` / `onMatchCreated` are **deployed**.
+- **UMP consent** (`AdsPlatform.requestConsent`) on Android and through the iOS bridge, called
+  before `MobileAds.initialize` — required for EEA/UK users, which a global app has by definition.
+- **Test-device registration** hook in `AdsPlatform.registerTestDevices`; add your phone's hashed
+  id to `TEST_DEVICE_IDS` after reading it out of the first run's logcat.
+- **GoogleAuthBridge.swift** and **PushBridge.swift** written, plus `IosGoogleAuthHost`, and both
+  installed from `iOSApp.init()`.
+- **Node 22** across both codebases; all 18 deployed functions moved off the deprecated runtime.
+  The same deploy removed four dead callables from production — `getPaymentDetails`,
+  `getPlanPricing`, `savePlanPricing`, `resetPlanPricing` — and replaced the live
+  `recordPaymentFailure` with the reconstruction, on the owner's instruction.
+
+Left, and all of it needs you:
+
+| What | Why only you |
+| --- | --- |
+| Check `appConfig/ads` holds real ad unit ids | Console. Blank fields mean test ads worldwide and no revenue. |
+| Add the three Swift packages in Xcode | GoogleSignIn, FirebaseMessaging, GoogleMobileAds. Target membership cannot be scripted. |
+| Push capability + APNs key | Xcode capability and an Apple Developer key uploaded to Firebase. |
+| Play data-safety form | Precise location is new. |
+| Run it on a device | Nothing here has ever run. |
+| ~~Node 20 runtime~~ | **Done 2026-09-01** — both codebases pinned to Node 22 and all 18 functions redeployed. Zero remain on 20. |
+
 ## What I need from you, shortest form
 
 1. **Restore `razorpay.ts`** from Local History, then commit the repo.

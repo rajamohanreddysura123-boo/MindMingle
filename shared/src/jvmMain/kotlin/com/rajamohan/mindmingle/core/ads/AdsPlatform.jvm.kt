@@ -16,6 +16,8 @@ actual object AdsPlatform {
 
     actual fun initialize() = Unit
 
+    actual suspend fun requestConsent() = Unit
+
     actual suspend fun showInterstitial(unitId: String): Boolean = false
 }
 

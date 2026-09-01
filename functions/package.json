@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for MindMingle — email OTP sign-in (desktop primary auth + admin bootstrap)",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {

@@ -402,6 +402,65 @@ export const getBillingHistory = onCall(async (request) => {
 });
 
 /**
+ * Records a checkout that failed on the device, and tells the user no money was taken.
+ *
+ * Nothing is granted here and nothing is trusted: the client reports only its own order id, the
+ * plan it was buying and a reason string, and the write lands under the caller's own uid. A client
+ * that lies about this achieves nothing beyond a wrong row in its own history.
+ *
+ * It exists because a decline that leaves no trace is indistinguishable from a bug when the user
+ * writes in: the attempt row is what support reads, and `firestore.rules` makes it owner-readable
+ * and Functions-only writable for exactly that reason.
+ *
+ * Reconstructed 2026-09-01 after the original was lost to a bad `git checkout`. The contract comes
+ * from its caller (MindMingleFirebaseProvider.recordPaymentFailure) and from the collection the
+ * rules already documented; the shape it writes matches the payment rows beside it.
+ */
+export const recordPaymentFailure = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Sign in required");
+  }
+
+  const orderId = String(request.data?.orderId ?? "").trim();
+  const planId = String(request.data?.planId ?? "").trim();
+  const reason = String(request.data?.reason ?? "").trim().slice(0, 500);
+
+  if (!orderId) {
+    throw new HttpsError("invalid-argument", "orderId is required");
+  }
+
+  await db()
+    .collection("subscriptions")
+    .doc(uid)
+    .collection("paymentAttempts")
+    .doc(orderId)
+    .set(
+      {
+        uid,
+        orderId,
+        planId,
+        reason,
+        status: "failed",
+        createdAt: Date.now(),
+      },
+      // merge: a retry of the same order updates the row rather than stacking a second one.
+      { merge: true }
+    );
+
+  // Best-effort: the user has just watched a payment fail, and a notification that itself fails
+  // must not turn into an error on top of it.
+  try {
+    await notifyPaymentFailed({ uid, reason });
+  } catch (error) {
+    logger.warn("payment failure notification not sent", { uid, orderId, error });
+  }
+
+  logger.info("payment failure recorded", { uid, orderId, planId });
+  return { recorded: true };
+});
+
+/**
  * Admin-granted plan — comps, support gestures, refund make-goods. No money moves, so it is
  * recorded as its own zero-amount entry in the same history the user sees.
  */
