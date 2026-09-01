@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "deploy": "firebase deploy --only functions:mindmingleBackendServices",
+    "deploy": "firebase deploy --only functions:mindmingle-backend-services",
     "logs": "firebase functions:log"
   },
   "dependencies": {

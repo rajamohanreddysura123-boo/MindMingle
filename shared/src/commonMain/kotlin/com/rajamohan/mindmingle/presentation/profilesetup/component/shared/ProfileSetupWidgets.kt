@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.core.media.decodeToImageBitmapOrNull
 import com.rajamohan.mindmingle.core.media.fetchImageBytes
 import com.rajamohan.mindmingle.domain.model.CountryCode
@@ -148,7 +151,16 @@ fun WizardNavRow(
     }
 }
 
-/** Up-to-5-photo row: existing thumbnails (local bytes or fetched-by-url) + a trailing "add" tile. */
+/**
+ * Up-to-[MAX_PROFILE_PHOTOS]-photo row: existing thumbnails (local bytes or fetched-by-url) plus a
+ * trailing "add" tile.
+ *
+ * It scrolls horizontally, and has to: five 84dp tiles and the add tile come to over 550dp, so on
+ * any phone the last two sat off the edge of a plain Row with no way to reach them — a photo could
+ * be uploaded and then be impossible to remove. The scroll is edge-to-edge with the padding moved
+ * inside it, so a thumbnail can sit under the screen margin while scrolling instead of being
+ * clipped by it.
+ */
 @Composable
 fun PhotoPickerRow(
     photos: List<ProfilePhoto>,
@@ -158,43 +170,59 @@ fun PhotoPickerRow(
 ) {
     val colors = MaterialTheme.colorScheme
 
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        photos.forEachIndexed { index, photo ->
-            Box(modifier = Modifier.size(84.dp)) {
-                PhotoThumbnail(photo = photo)
-                if (!photo.isUploading) {
-                    Surface(
-                        onClick = { onRemove(index) },
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.6f),
-                        modifier = Modifier.size(22.dp).align(Alignment.TopEnd)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            CrossIcon(color = Color.White, modifier = Modifier.size(10.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "${photos.size} of $MAX_PROFILE_PHOTOS added",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = colors.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            photos.forEachIndexed { index, photo ->
+                Box(modifier = Modifier.size(84.dp)) {
+                    PhotoThumbnail(photo = photo)
+                    if (!photo.isUploading) {
+                        Surface(
+                            onClick = { onRemove(index) },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.6f),
+                            modifier = Modifier.size(22.dp).align(Alignment.TopEnd)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                CrossIcon(color = Color.White, modifier = Modifier.size(10.dp))
+                            }
                         }
-                    }
-                } else {
-                    Box(modifier = Modifier.size(84.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                    } else {
+                        Box(modifier = Modifier.size(84.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
             }
-        }
 
-        if (photos.size < 5) {
-            Surface(
-                onClick = onAddClick,
-                enabled = !isPicking,
-                shape = RoundedCornerShape(16.dp),
-                color = colors.surfaceVariant.copy(alpha = 0.4f),
-                border = BorderStroke(1.dp, colors.outline.copy(alpha = 0.3f)),
-                modifier = Modifier.size(84.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (isPicking) {
-                        CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
-                    } else {
-                        Text(text = "+", style = MaterialTheme.typography.headlineMedium, color = colors.onSurfaceVariant)
+            if (photos.size < MAX_PROFILE_PHOTOS) {
+                Surface(
+                    onClick = onAddClick,
+                    enabled = !isPicking,
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surfaceVariant.copy(alpha = 0.4f),
+                    border = BorderStroke(1.dp, colors.outline.copy(alpha = 0.3f)),
+                    modifier = Modifier.size(84.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (isPicking) {
+                            CircularProgressIndicator(color = colors.primary, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                        } else {
+                            Text(text = "+", style = MaterialTheme.typography.headlineMedium, color = colors.onSurfaceVariant)
+                        }
                     }
                 }
             }

@@ -30,7 +30,7 @@ actual object PushPlatform {
 
     actual suspend fun requestPermission(): Boolean {
         val context = AppContext.get() as? Context ?: return false
-        ensureChannel(context)
+        ensureNotificationChannel(context)
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
 
@@ -70,7 +70,8 @@ actual object PushPlatform {
         refreshListener?.invoke(token)
     }
 
-    private fun ensureChannel(context: Context) {
+    /** Internal rather than private: [LocalNotifier] posts on the same channel. */
+    internal fun ensureNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return

@@ -79,10 +79,16 @@ fun DesktopChatScreen(uid: String) {
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         Row(modifier = Modifier.fillMaxSize()) {
             DesktopConversationList(
+                uid = uid,
                 isLoading = uiState.isLoadingConversations,
-                conversations = uiState.conversations,
-                selectedMatchId = uiState.activeConversation?.matchId,
-                onSelect = { matchId -> viewModel.onEvent(ChatEvent.OpenConversation(matchId)) },
+                isLoadingMore = uiState.isLoadingMore,
+                hasMore = uiState.hasMore,
+                query = uiState.query,
+                conversations = uiState.visibleConversations,
+                selectedConversationId = uiState.activeConversation?.conversationId,
+                onQueryChange = { viewModel.onEvent(ChatEvent.SearchChanged(it)) },
+                onLoadMore = { viewModel.onEvent(ChatEvent.LoadMoreConversations) },
+                onSelect = { conversationId -> viewModel.onEvent(ChatEvent.OpenConversation(conversationId)) },
                 modifier = Modifier.width(320.dp).fillMaxHeight()
             )
 
@@ -101,7 +107,7 @@ fun DesktopChatScreen(uid: String) {
                         conversation = conversation,
                         messages = uiState.messages,
                         onSend = { text ->
-                            viewModel.onEvent(ChatEvent.SendMessage(matchId = conversation.matchId, senderId = uid, text = text))
+                            viewModel.onEvent(ChatEvent.SendMessage(conversationId = conversation.conversationId, senderId = uid, text = text))
                         }
                     )
                 }
@@ -112,10 +118,16 @@ fun DesktopChatScreen(uid: String) {
 
 @Composable
 private fun DesktopConversationList(
+    uid: String,
     isLoading: Boolean,
+    isLoadingMore: Boolean,
+    hasMore: Boolean,
+    query: String,
     conversations: List<ChatConversation>,
-    selectedMatchId: String?,
-    onSelect: (matchId: String) -> Unit,
+    selectedConversationId: String?,
+    onQueryChange: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    onSelect: (conversationId: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
@@ -135,6 +147,38 @@ private fun DesktopConversationList(
             modifier = Modifier.padding(20.dp)
         )
 
+        // Filters the pages already loaded — no query per keystroke.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .height(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surfaceVariant.copy(alpha = 0.4f))
+                .padding(horizontal = 12.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = typography.bodySmall.copy(color = colors.onSurface),
+                modifier = Modifier.fillMaxWidth(),
+                decorationBox = { inner ->
+                    if (query.isEmpty()) {
+                        Text(
+                            text = "Search chats",
+                            style = typography.bodySmall,
+                            color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    inner()
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         when {
             isLoading -> {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -144,7 +188,7 @@ private fun DesktopConversationList(
             conversations.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Match with a tech partner in Discover to start chatting",
+                        text = "Like someone in Discover to start chatting",
                         style = typography.bodySmall,
                         color = colors.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 12.dp)
@@ -153,16 +197,16 @@ private fun DesktopConversationList(
             }
             else -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    items(conversations, key = { it.matchId }) { item ->
-                        val isSelected = item.matchId == selectedMatchId
+                    items(conversations, key = { it.conversationId }) { item ->
+                        val isSelected = item.conversationId == selectedConversationId
                         Surface(
-                            onClick = { onSelect(item.matchId) },
+                            onClick = { onSelect(item.conversationId) },
                             color = if (isSelected) colors.primaryContainer.copy(alpha = 0.4f) else Color.Transparent,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(
-                                    modifier = Modifier.size(44.dp).clip(CircleShape).background(Brush.linearGradient(chatPaletteFor(item.otherUser.uid))),
+                                    modifier = Modifier.size(44.dp).clip(CircleShape).background(Brush.linearGradient(chatPaletteFor(item.otherUid))),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(20.dp))
@@ -170,17 +214,53 @@ private fun DesktopConversationList(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = item.otherUser.name,
+                                        text = item.displayName,
                                         style = typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.onSurface
                                     )
+                                    // No preview text: messages disappear once seen, so a copy
+                                    // here would outlive the message itself.
                                     Text(
-                                        text = item.lastMessage.ifBlank { "You matched — say hi!" },
+                                        text = when {
+                                            item.hasUnreadFor(uid) -> "New message"
+                                            item.lastMessageAtSeconds > 0L -> "Opened"
+                                            else -> "Say hi!"
+                                        },
                                         style = typography.bodySmall,
-                                        color = colors.onSurfaceVariant,
+                                        color = if (item.hasUnreadFor(uid)) colors.primary else colors.onSurfaceVariant,
+                                        fontWeight = if (item.hasUnreadFor(uid)) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 1
                                     )
+                                }
+                            }
+                        }
+                    }
+
+                    // Conversations arrive a page at a time; search covers what is loaded.
+                    if (hasMore && query.isBlank()) {
+                        item {
+                            Surface(
+                                onClick = onLoadMore,
+                                enabled = !isLoadingMore,
+                                color = Color.Transparent,
+                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    if (isLoadingMore) {
+                                        CircularProgressIndicator(
+                                            color = colors.primary,
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "Load older chats",
+                                            style = typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.primary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -229,16 +309,16 @@ private fun DesktopChatThread(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(chatPaletteFor(conversation.otherUser.uid))),
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(chatPaletteFor(conversation.otherUid))),
                 contentAlignment = Alignment.Center
             ) {
                 DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(18.dp))
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-                Text(text = conversation.otherUser.name, style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                Text(text = conversation.displayName, style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
                 Text(
-                    text = conversation.otherUser.occupation,
+                    text = if (conversation.isOtherUserDeleted) "Account deleted" else "Connected",
                     style = typography.labelSmall,
                     color = colors.onSurfaceVariant
                 )
@@ -257,7 +337,7 @@ private fun DesktopChatThread(
                         WaveIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(32.dp))
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "You matched with ${conversation.otherUser.name}. Say hi!",
+                            text = "Start the conversation with ${conversation.displayName}.",
                             style = typography.bodyMedium,
                             color = colors.onSurfaceVariant
                         )
@@ -306,7 +386,7 @@ private fun DesktopChatThread(
                     decorationBox = { inner ->
                         if (draftText.isEmpty()) {
                             Text(
-                                text = "Message ${conversation.otherUser.name}…",
+                                text = "Message ${conversation.displayName}…",
                                 style = typography.bodyMedium,
                                 color = colors.onSurfaceVariant.copy(alpha = 0.6f)
                             )

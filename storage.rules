@@ -13,6 +13,13 @@ service firebase.storage {
         && request.auth.uid == uid
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+      // Owner-only. A user clears their own photos on account deletion, before signing out for
+      // good. There is deliberately no admin delete: Storage rules cannot read Firestore, so the
+      // users/{uid}.userType flag that grants admin everywhere else is unreachable here, and no
+      // address is hardcoded in its place. An admin purging an account therefore leaves that
+      // account's photos behind as orphans — unreachable once the profile doc is gone, but still
+      // stored. Granting admin deletes back needs a custom auth claim (Admin SDK, so Cloud
+      // Functions) checked as request.auth.token.admin == true.
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
   }

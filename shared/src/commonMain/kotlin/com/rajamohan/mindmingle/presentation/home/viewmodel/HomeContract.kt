@@ -4,17 +4,11 @@ import com.rajamohan.mindmingle.domain.model.AdConfig
 import com.rajamohan.mindmingle.domain.model.DiscoverFilterCriteria
 import com.rajamohan.mindmingle.domain.model.DiscoverFilterDefaults
 import com.rajamohan.mindmingle.domain.model.User
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 internal sealed class HomeEvent {
     data class LoadProfiles(val uid: String) : HomeEvent()
     data class Connect(val fromUid: String, val toUid: String) : HomeEvent()
     data object Pass : HomeEvent()
-    data object DismissMatch : HomeEvent()
     data class ApplyFilters(val filters: DiscoverFilters) : HomeEvent()
     data object ResetFilters : HomeEvent()
 
@@ -57,6 +51,10 @@ internal data class DiscoverFilters(
     val genders: Set<String> = emptySet(),
     val experienceLevels: Set<String> = emptySet(),
     val languages: Set<String> = emptySet(),
+    /** ISO country codes. A paid filter, like distance and languages. */
+    val countries: Set<String> = emptySet(),
+    /** District (ADM2) names. A paid filter; only means anything alongside a country. */
+    val districts: Set<String> = emptySet(),
     /** Lifestyle/intent selections keyed by profile_options.json field key; empty values count as unset. */
     val detailFilters: Map<String, Set<String>> = emptyMap()
 ) {
@@ -66,12 +64,6 @@ internal data class DiscoverFilters(
     /** Only the keys the user actually narrowed — a key mapped to an empty set is not a filter. */
     private val activeDetailFilters: Map<String, Set<String>>
         get() = detailFilters.filterValues { it.isNotEmpty() }
-
-    val isDefault: Boolean
-        get() = isAgeDefault && maxDistanceKm == null &&
-            interests.isEmpty() && lookingFor.isEmpty() && occupations.isEmpty() &&
-            genders.isEmpty() && experienceLevels.isEmpty() && languages.isEmpty() &&
-            activeDetailFilters.isEmpty()
 
     /** Counts filter *groups* in use, not individual selections — it drives the badge on the filter button. */
     val activeCount: Int
@@ -83,6 +75,8 @@ internal data class DiscoverFilters(
             (if (genders.isNotEmpty()) 1 else 0) +
             (if (experienceLevels.isNotEmpty()) 1 else 0) +
             (if (languages.isNotEmpty()) 1 else 0) +
+            (if (countries.isNotEmpty()) 1 else 0) +
+            (if (districts.isNotEmpty()) 1 else 0) +
             activeDetailFilters.size
 
     /** Sent to the `filterDiscoverProfiles` cloud function — actual matching happens server-side. */
@@ -96,6 +90,8 @@ internal data class DiscoverFilters(
         genders = genders,
         experienceLevels = experienceLevels,
         languages = languages,
+        countries = countries,
+        districts = districts,
         detailFilters = activeDetailFilters
     )
 
@@ -103,6 +99,8 @@ internal data class DiscoverFilters(
     fun withoutPremiumFilters(): DiscoverFilters = copy(
         maxDistanceKm = null,
         languages = emptySet(),
+        countries = emptySet(),
+        districts = emptySet(),
         detailFilters = emptyMap()
     )
 }
@@ -118,19 +116,10 @@ internal fun DiscoverFilterCriteria.toFilters(): DiscoverFilters = DiscoverFilte
     genders = genders,
     experienceLevels = experienceLevels,
     languages = languages,
+    countries = countries,
+    districts = districts,
     detailFilters = detailFilters
 )
-
-/** Great-circle distance between two lat/long points, in kilometers. */
-private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-    val earthRadiusKm = 6371.0
-    val dLat = (lat2 - lat1) * PI / 180.0
-    val dLng = (lng2 - lng1) * PI / 180.0
-    val a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * PI / 180.0) * cos(lat2 * PI / 180.0) * sin(dLng / 2) * sin(dLng / 2)
-    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    return earthRadiusKm * c
-}
 
 internal data class HomeUiState(
     val isLoading: Boolean = false,
@@ -139,11 +128,12 @@ internal data class HomeUiState(
     val myLatitude: Double? = null,
     val myLongitude: Double? = null,
     val currentIndex: Int = 0,
-    val matchedUser: User? = null,
     val adConfig: AdConfig = AdConfig(),
     /** True while an MindMingle+ plan is active — the deck serves no ads at all then. */
     val isPremium: Boolean = false,
     val adGate: AdGate? = null,
+    /** True once the deck has wrapped around and is showing already-seen people a second time. */
+    val isRecycledDeck: Boolean = false,
     val error: String = ""
 ) {
     // allProfiles already reflects the server-side filtered result of `filters` (see HomeViewModel.fetchDiscoverProfiles).
@@ -156,11 +146,12 @@ internal data class HomeUiState(
     /** True once we know the signed-in user's own coordinates — distance filter only makes sense then. */
     val hasMyLocation: Boolean get() = myLatitude != null && myLongitude != null
 
-    fun distanceToKm(user: User): Double? {
-        val lat = myLatitude ?: return null
-        val lng = myLongitude ?: return null
-        val userLat = user.latitude ?: return null
-        val userLng = user.longitude ?: return null
-        return haversineKm(lat, lng, userLat, userLng)
-    }
+    /**
+     * The distance the server measured for this profile.
+     *
+     * It is not computed here any more, and cannot be: `filterDiscoverProfiles` strips a
+     * candidate's coordinates before returning it, so the client no longer holds anything to
+     * measure from. Null when either side has no location on file.
+     */
+    fun distanceToKm(user: User): Double? = user.distanceKm
 }

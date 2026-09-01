@@ -15,9 +15,6 @@ data class SubscriptionDto(
 )
 
 @Serializable
-data class EmptyRequestDto(val unused: Boolean = true)
-
-@Serializable
 data class CreateOrderRequestDto(val planId: String, val countryHint: String = "")
 
 @Serializable

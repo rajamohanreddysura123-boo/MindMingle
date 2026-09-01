@@ -48,7 +48,10 @@ private data class PlusFeature(val title: String, val description: String)
 private val plusFeatures = listOf(
     PlusFeature("Unlimited Connects", "Like as many tech partners as you want, no daily cap"),
     PlusFeature("See Who Liked You", "Skip the guesswork and match instantly"),
-    PlusFeature("Advanced Filters", "Filter Discover by exact tech stack and experience level"),
+    PlusFeature(
+        "Advanced Filters",
+        "Filter Discover by occupation, experience, interests, languages, distance and lifestyle — free search covers age, gender and intent"
+    ),
     PlusFeature("Priority in Discover", "Your profile surfaces first to relevant matches"),
     PlusFeature("Verified Developer Badge", "Boost trust with a GitHub-verified checkmark"),
     PlusFeature("Unlimited Rewinds", "Undo an accidental pass anytime")

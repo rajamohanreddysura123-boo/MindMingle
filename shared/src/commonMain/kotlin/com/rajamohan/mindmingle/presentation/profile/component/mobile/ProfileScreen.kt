@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -48,7 +48,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.rajamohan.mindmingle.core.settings.AppearanceMode
 import com.rajamohan.mindmingle.core.settings.AppearanceSettings
+import com.rajamohan.mindmingle.domain.model.Invoice
 import com.rajamohan.mindmingle.domain.model.PaymentRecord
+import com.rajamohan.mindmingle.presentation.billing.InvoiceDetailDialog
+import com.rajamohan.mindmingle.presentation.common.component.LogoutConfirmDialog
 import com.rajamohan.mindmingle.presentation.common.icon.CheckBadgeIcon
 import com.rajamohan.mindmingle.presentation.common.icon.CrownIcon
 import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
@@ -66,12 +69,13 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun ProfileScreen(
     uid: String,
-    userName: String = "Rajamohan Reddy",
-    userEmail: String = "rajamohan.reddy@gmail.com",
+    userName: String = "",
+    userEmail: String = "",
     onLogout: () -> Unit = {},
     onUpgradeClick: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
-    onOpenSupportClick: () -> Unit = {}
+    onOpenSupportClick: () -> Unit = {},
+    onOpenAccountSettingsClick: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -91,15 +95,8 @@ fun ProfileScreen(
         }
     }
 
-    // Deleting the account also deletes the Auth user, so the session is already gone.
-    LaunchedEffect(uiState.isAccountDeleted) {
-        if (uiState.isAccountDeleted) {
-            onLogout()
-        }
-    }
-
     val appearanceMode by AppearanceSettings.mode.collectAsState()
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
     val appearanceOptions = AppearanceMode.entries
 
     Surface(
@@ -109,7 +106,7 @@ fun ProfileScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.screenHorizontal, vertical = Spacing.screenVertical)
         ) {
@@ -127,17 +124,6 @@ fun ProfileScreen(
                     fontWeight = FontWeight.Bold,
                     color = colors.onBackground
                 )
-
-                Surface(
-                    onClick = { },
-                    shape = CircleShape,
-                    color = colors.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        GearIcon(color = colors.onSurface, modifier = Modifier.size(18.dp))
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -195,7 +181,7 @@ fun ProfileScreen(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = userName,
+                            text = userName.ifBlank { uiState.user?.name.orEmpty().ifBlank { "MindMingle user" } },
                             style = typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = colors.onSurface
@@ -209,7 +195,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = userEmail,
+                        text = userEmail.ifBlank { uiState.user?.email.orEmpty() },
                         style = typography.bodyMedium,
                         color = colors.onSurfaceVariant
                     )
@@ -332,8 +318,8 @@ fun ProfileScreen(
                     modifier = Modifier.weight(1f)
                 )
                 ProfileStatCard(
-                    number = "${uiState.matchesCount}",
-                    label = "Matches",
+                    number = "${uiState.conversationsCount}",
+                    label = "Chats",
                     icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(20.dp)) },
                     modifier = Modifier.weight(1f)
                 )
@@ -417,6 +403,7 @@ fun ProfileScreen(
                 isLoading = uiState.isLoadingBilling,
                 hasOrders = uiState.hasOrders,
                 payments = uiState.payments,
+                invoiceFor = { paymentId -> uiState.billing?.invoiceFor(paymentId) },
                 renewsLabel = uiState.planRenewsLabel,
                 isPlanActive = uiState.isPremium,
                 error = uiState.billingError
@@ -439,13 +426,15 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 ProfileMenuItem(icon = { HelpCircleIcon(color = colors.onSurface, modifier = Modifier.size(20.dp)) }, title = "Help & Support", onClick = onOpenSupportClick)
+                // Deactivation and deletion both live behind here — neither belongs one tap away.
+                ProfileMenuItem(icon = { GearIcon(color = colors.onSurface, modifier = Modifier.size(20.dp)) }, title = "Account Settings", onClick = onOpenAccountSettingsClick)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Log Out Button
+            // Log Out Button — confirms first, so a mis-tap here costs nothing.
             Surface(
-                onClick = onLogout,
+                onClick = { showLogoutConfirm = true },
                 shape = RoundedCornerShape(18.dp),
                 color = colors.errorContainer.copy(alpha = 0.2f),
                 border = BorderStroke(1.dp, colors.error.copy(alpha = 0.3f)),
@@ -469,127 +458,18 @@ fun ProfileScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Account deletion. Wipes everything server-side, so it asks twice.
-            Surface(
-                onClick = { showDeleteConfirm = true },
-                enabled = !uiState.isDeletingAccount,
-                shape = RoundedCornerShape(18.dp),
-                color = colors.error,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    if (uiState.isDeletingAccount) {
-                        CircularProgressIndicator(
-                            color = colors.onError,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    } else {
-                        Text(
-                            text = "Delete My Account",
-                            style = typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.onError
-                        )
-                    }
-                }
-            }
-
-            if (uiState.deleteError.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = uiState.deleteError,
-                    style = typography.bodySmall,
-                    color = colors.error
-                )
-            }
-
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
-    if (showDeleteConfirm) {
-        DeleteAccountDialog(
+    if (showLogoutConfirm) {
+        LogoutConfirmDialog(
             onConfirm = {
-                showDeleteConfirm = false
-                viewModel.deleteAccount()
+                showLogoutConfirm = false
+                onLogout()
             },
-            onDismiss = { showDeleteConfirm = false }
+            onDismiss = { showLogoutConfirm = false }
         )
-    }
-}
-
-@Composable
-private fun DeleteAccountDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val typography = MaterialTheme.typography
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, shadowElevation = 8.dp) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = "Delete your account?",
-                    style = typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "This erases your profile, photos, matches, messages, likes and " +
-                        "subscription records permanently. It cannot be undone, and any time left " +
-                        "on an MindMingle+ plan is lost.",
-                    style = typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                    lineHeight = 20.sp
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(50),
-                        color = colors.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.weight(1f).height(46.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "Keep account",
-                                style = typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.onSurface
-                            )
-                        }
-                    }
-
-                    Surface(
-                        onClick = onConfirm,
-                        shape = RoundedCornerShape(50),
-                        color = colors.error,
-                        modifier = Modifier.weight(1f).height(46.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "Delete forever",
-                                style = typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.onError
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -598,12 +478,21 @@ private fun OrdersCard(
     isLoading: Boolean,
     hasOrders: Boolean,
     payments: List<PaymentRecord>,
+    invoiceFor: (String) -> Invoice?,
     renewsLabel: String,
     isPlanActive: Boolean,
     error: String
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+
+    // Which invoice is open, if any. Held here rather than in the ViewModel: it is view state
+    // that dies with the screen, and nothing else needs to know about it.
+    var openInvoice by remember { mutableStateOf<Invoice?>(null) }
+
+    openInvoice?.let { invoice ->
+        InvoiceDetailDialog(invoice = invoice, onDismiss = { openInvoice = null })
+    }
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -641,8 +530,20 @@ private fun OrdersCard(
 
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         payments.forEach { payment ->
+                            val invoice = invoiceFor(payment.paymentId)
+
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // An admin grant has no invoice, so that row stays inert
+                                    // rather than opening an empty sheet.
+                                    .then(
+                                        if (invoice != null) {
+                                            Modifier.clickable { openInvoice = invoice }
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -658,6 +559,14 @@ private fun OrdersCard(
                                         style = typography.bodySmall,
                                         color = colors.onSurfaceVariant
                                     )
+                                    if (invoice != null) {
+                                        Text(
+                                            text = "Invoice ${invoice.invoiceNumber} · View",
+                                            style = typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.primary
+                                        )
+                                    }
                                 }
                                 Text(
                                     text = payment.amountLabel(),
@@ -817,7 +726,7 @@ private fun UpgradeToPlusBanner(onUpgradeClick: () -> Unit) {
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "Go ad-free and unlock unlimited matches, priority messaging and AI profile insights.",
+                    text = "Go ad-free and filter Discover by occupation, experience, interests, languages, distance and lifestyle.",
                     style = typography.bodySmall,
                     color = Color.White.copy(alpha = 0.9f),
                     lineHeight = 18.sp

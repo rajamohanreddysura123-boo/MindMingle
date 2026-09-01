@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -71,7 +71,7 @@ fun AdminSupportChatScreen(uid: String, userName: String, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .widthIn(max = 900.dp)
                 .padding(Spacing.desktopScreenPadding)
         ) {

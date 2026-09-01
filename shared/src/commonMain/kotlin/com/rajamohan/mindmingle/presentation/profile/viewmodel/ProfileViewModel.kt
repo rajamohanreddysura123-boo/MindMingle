@@ -2,11 +2,10 @@ package com.rajamohan.mindmingle.presentation.profile.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rajamohan.mindmingle.domain.model.nowMillis
 import com.rajamohan.mindmingle.domain.repository.MindMingleRemoteRepository
-import com.rajamohan.mindmingle.domain.usecase.DeleteMyAccountUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetBillingHistoryUseCase
-import com.rajamohan.mindmingle.domain.usecase.GetConversationsUseCase
-import com.rajamohan.mindmingle.domain.usecase.GetIncomingLikesUseCase
+import com.rajamohan.mindmingle.domain.usecase.GetProfileStatsUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetUserProfileUseCase
 import com.rajamohan.mindmingle.domain.usecase.ObserveSubscriptionUseCase
 import kotlinx.coroutines.Job
@@ -18,11 +17,9 @@ import kotlinx.coroutines.launch
 
 internal class ProfileViewModel(
     private val getUserProfileUseCase: GetUserProfileUseCase,
-    private val getConversationsUseCase: GetConversationsUseCase,
-    private val getIncomingLikesUseCase: GetIncomingLikesUseCase,
+    private val getProfileStatsUseCase: GetProfileStatsUseCase,
     private val observeSubscriptionUseCase: ObserveSubscriptionUseCase,
     private val getBillingHistoryUseCase: GetBillingHistoryUseCase,
-    private val deleteMyAccountUseCase: DeleteMyAccountUseCase,
     private val mindMingleRemoteRepository: MindMingleRemoteRepository
 ) : ViewModel() {
 
@@ -37,19 +34,25 @@ internal class ProfileViewModel(
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             val user = getUserProfileUseCase(uid)
-            if (user?.isDisabled == true) {
+            // Catches an account that stopped being usable mid-session: an admin disabling it, a
+            // deletion filed from another device, or a deactivation window started elsewhere.
+            val isLockedOut = user != null && (
+                user.isDisabled ||
+                    user.isDeletionRequested ||
+                    user.isDeactivatedAt(nowMillis())
+                )
+            if (isLockedOut) {
                 mindMingleRemoteRepository.signOutCurrentUser()
                 _uiState.update { it.copy(isLoading = false, isAccountBlocked = true) }
                 return@launch
             }
-            val matches = getConversationsUseCase(uid)
-            val likes = getIncomingLikesUseCase(uid)
+            val stats = getProfileStatsUseCase(uid)
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     user = user,
-                    matchesCount = matches.size,
-                    likesCount = likes.size
+                    conversationsCount = stats.conversations,
+                    likesCount = stats.likes
                 )
             }
         }
@@ -67,31 +70,6 @@ internal class ProfileViewModel(
                         it.copy(
                             isLoadingBilling = false,
                             billingError = error.message ?: "Could not load your orders"
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    /**
-     * Point of no return: the server erases every record tied to this account, including the
-     * Firebase Auth user, so the session is dead either way once this succeeds.
-     */
-    fun deleteAccount() {
-        if (_uiState.value.isDeletingAccount) return
-        _uiState.update { it.copy(isDeletingAccount = true, deleteError = "") }
-        viewModelScope.launch {
-            deleteMyAccountUseCase().fold(
-                onSuccess = {
-                    mindMingleRemoteRepository.signOutCurrentUser()
-                    _uiState.update { it.copy(isDeletingAccount = false, isAccountDeleted = true) }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isDeletingAccount = false,
-                            deleteError = error.message ?: "Could not delete your account"
                         )
                     }
                 }

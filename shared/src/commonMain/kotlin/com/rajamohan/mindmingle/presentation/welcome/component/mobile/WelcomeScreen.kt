@@ -57,7 +57,7 @@ fun OnboardingScreen(
     /** Desktop only — the widescreen "Get Started" CTA. Mobile signs in with Google alone. */
     onGetStartedClick: () -> Unit = {},
     onGoogleSignInSuccess: (email: String, name: String) -> Unit = { _, _ -> },
-    /** Desktop's primary sign-in entry — no working Google OAuth on JVM, so email + a mailed code instead. */
+    /** Email + password. Desktop's only way in (no working Google OAuth on JVM); on mobile it sits under Google. */
     onEmailSignInClick: () -> Unit = {}
 ) {
     var isSigningIn by remember { mutableStateOf(false) }
@@ -87,9 +87,10 @@ fun OnboardingScreen(
                 onEmailSignInClick = onEmailSignInClick
             )
         } else {
-            // Mobile Design — Google Sign-In only.
+            // Mobile Design — Google, or email + password underneath it.
             MobileWelcomeScreen(
-                onGoogleSignInClick = onGoogleSignInClick
+                onGoogleSignInClick = onGoogleSignInClick,
+                onEmailSignInClick = onEmailSignInClick
             )
         }
 
@@ -130,7 +131,8 @@ private fun GoogleSignInLoadingDialog() {
 
 @Composable
 private fun MobileWelcomeScreen(
-    onGoogleSignInClick: () -> Unit = {}
+    onGoogleSignInClick: () -> Unit = {},
+    onEmailSignInClick: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -142,7 +144,7 @@ private fun MobileWelcomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .padding(horizontal = Spacing.screenHorizontal, vertical = Spacing.screenVertical),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
@@ -193,7 +195,7 @@ private fun MobileWelcomeScreen(
 
                 // Subtitle
                 Text(
-                    text = "Match on skills, not selfies.\nNo photos required to connect.",
+                    text = "Connect on skills, not selfies.\nNo photos required to connect.",
                     style = typography.bodyMedium,
                     fontSize = 14.sp,
                     color = colors.onSurfaceVariant,
@@ -204,7 +206,7 @@ private fun MobileWelcomeScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Google is mobile's only sign-in entry — phone-number signup is retired.
+                // Google first, email + password as the fallback — phone-number signup is retired.
                 Surface(
                     onClick = onGoogleSignInClick,
                     shape = RoundedCornerShape(50),
@@ -224,6 +226,27 @@ private fun MobileWelcomeScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = "Continue with Google",
+                            style = typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.onSurface
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Surface(
+                    onClick = onEmailSignInClick,
+                    shape = RoundedCornerShape(50),
+                    color = Color.Transparent,
+                    border = BorderStroke(1.dp, colors.outline.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(58.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = "Continue with Email",
                             style = typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.onSurface
@@ -298,7 +321,7 @@ private fun PhotoCollage(modifier: Modifier = Modifier) {
         // Hero Center Avatar (Largest) — User's real photo
         ProfileAvatar(
             size = 150.dp,
-            imageRes = Res.drawable.avatar_rajamohan,
+            imageRes = Res.drawable.avatar_woman_3,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(y = 10.dp),

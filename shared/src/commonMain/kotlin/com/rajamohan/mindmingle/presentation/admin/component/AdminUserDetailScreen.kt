@@ -1,6 +1,7 @@
 package com.rajamohan.mindmingle.presentation.admin.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -35,7 +36,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.rajamohan.mindmingle.domain.model.Invoice
 import com.rajamohan.mindmingle.domain.model.PaymentRecord
+import com.rajamohan.mindmingle.presentation.billing.InvoiceDetailDialog
 import com.rajamohan.mindmingle.domain.model.PremiumPlan
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminUserDetailViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
@@ -70,7 +73,7 @@ fun AdminUserDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .widthIn(max = 700.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(Spacing.desktopScreenPadding)
@@ -174,6 +177,7 @@ fun AdminUserDetailScreen(
                     isLoading = uiState.isLoadingBilling,
                     isMutating = uiState.isSubscriptionMutating,
                     payments = uiState.billing?.payments.orEmpty(),
+                    invoiceFor = { paymentId -> uiState.billing?.invoiceFor(paymentId) },
                     onGrantMonth = { viewModel.grantPlan(PremiumPlan.MONTHLY, 30) },
                     onGrantYear = { viewModel.grantPlan(PremiumPlan.ANNUAL, 365) },
                     onCancelAtPeriodEnd = { viewModel.cancelPlan(immediate = false) },
@@ -191,6 +195,11 @@ fun AdminUserDetailScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+                if (uiState.banMessage.isNotBlank()) {
+                    Text(text = uiState.banMessage, style = typography.bodySmall, color = colors.primary)
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Surface(
@@ -228,6 +237,27 @@ fun AdminUserDetailScreen(
                                 style = typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.error
+                            )
+                        }
+                    }
+
+                    // Deleting an account leaves a bannedUids tombstone, because a client SDK
+                    // cannot remove somebody else's Firebase Auth record. This is the only way
+                    // back from that short of the Firebase Console — the repository call is a
+                    // no-op when no tombstone exists, so it is safe on any account.
+                    Surface(
+                        onClick = { viewModel.unbanUser() },
+                        enabled = !uiState.isMutating,
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 22.dp)) {
+                            Text(
+                                text = "Lift Ban",
+                                style = typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.onSurface
                             )
                         }
                     }
@@ -283,6 +313,7 @@ private fun SubscriptionPanel(
     isLoading: Boolean,
     isMutating: Boolean,
     payments: List<PaymentRecord>,
+    invoiceFor: (String) -> Invoice?,
     onGrantMonth: () -> Unit,
     onGrantYear: () -> Unit,
     onCancelAtPeriodEnd: () -> Unit,
@@ -290,6 +321,14 @@ private fun SubscriptionPanel(
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+
+    // Support's most common question is "what exactly did this person pay?" — the invoice is
+    // the answer, so it opens from the same row rather than from a separate screen.
+    var openInvoice by remember { mutableStateOf<Invoice?>(null) }
+
+    openInvoice?.let { invoice ->
+        InvoiceDetailDialog(invoice = invoice, onDismiss = { openInvoice = null })
+    }
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -344,7 +383,20 @@ private fun SubscriptionPanel(
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     payments.forEach { payment ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        val invoice = invoiceFor(payment.paymentId)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (invoice != null) {
+                                        Modifier.clickable { openInvoice = invoice }
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = payment.plan?.label ?: payment.planId,
@@ -357,6 +409,14 @@ private fun SubscriptionPanel(
                                     style = typography.bodySmall,
                                     color = colors.onSurfaceVariant
                                 )
+                                if (invoice != null) {
+                                    Text(
+                                        text = "Invoice ${invoice.invoiceNumber} · View",
+                                        style = typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.primary
+                                    )
+                                }
                             }
                             Text(
                                 text = payment.amountLabel(),

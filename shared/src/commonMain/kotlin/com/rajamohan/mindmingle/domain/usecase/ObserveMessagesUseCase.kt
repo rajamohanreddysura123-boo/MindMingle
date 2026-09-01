@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 class ObserveMessagesUseCase(
     private val repository: MindMingleRemoteRepository
 ) {
-    operator fun invoke(matchId: String): Flow<List<ChatMessage>> {
-        return repository.observeMessages(matchId)
+    operator fun invoke(conversationId: String): Flow<List<ChatMessage>> {
+        return repository.observeMessages(conversationId)
     }
 }

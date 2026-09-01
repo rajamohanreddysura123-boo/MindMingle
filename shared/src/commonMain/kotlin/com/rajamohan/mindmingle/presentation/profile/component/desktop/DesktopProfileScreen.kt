@@ -3,6 +3,7 @@ package com.rajamohan.mindmingle.presentation.profile.component.desktop
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,12 +44,16 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.rajamohan.mindmingle.domain.model.Invoice
+import com.rajamohan.mindmingle.presentation.billing.InvoiceDetailDialog
 import com.rajamohan.mindmingle.presentation.common.icon.CheckBadgeIcon
 import com.rajamohan.mindmingle.presentation.common.icon.CrownIcon
 import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
 import com.rajamohan.mindmingle.presentation.common.icon.FlameIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HeartIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HelpCircleIcon
+import com.rajamohan.mindmingle.presentation.common.component.LogoutConfirmDialog
+import com.rajamohan.mindmingle.presentation.common.icon.GearIcon
 import com.rajamohan.mindmingle.presentation.common.icon.LogoutIcon
 import com.rajamohan.mindmingle.presentation.common.icon.PencilIcon
 import com.rajamohan.mindmingle.presentation.common.icon.BoltIcon
@@ -60,12 +65,13 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun DesktopProfileScreen(
     uid: String,
-    userName: String = "Rajamohan Reddy",
-    userEmail: String = "rajamohan.reddy@gmail.com",
+    userName: String = "",
+    userEmail: String = "",
     onLogout: () -> Unit = {},
     onUpgradeClick: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
-    onOpenSupportClick: () -> Unit = {}
+    onOpenSupportClick: () -> Unit = {},
+    onOpenAccountSettingsClick: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -81,12 +87,14 @@ fun DesktopProfileScreen(
         if (uiState.isAccountBlocked) onLogout()
     }
 
-    // Deleting the account also deletes the Auth user, so the session is already gone.
-    LaunchedEffect(uiState.isAccountDeleted) {
-        if (uiState.isAccountDeleted) onLogout()
-    }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    // The invoice currently being read, if any. View state only — it dies with the screen.
+    var openInvoice by remember { mutableStateOf<Invoice?>(null) }
+
+    openInvoice?.let { invoice ->
+        InvoiceDetailDialog(invoice = invoice, onDismiss = { openInvoice = null })
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         Row(
@@ -127,13 +135,13 @@ fun DesktopProfileScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = userName, style = typography.titleLarge, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                            Text(text = userName.ifBlank { uiState.user?.name.orEmpty().ifBlank { "MindMingle user" } }, style = typography.titleLarge, fontWeight = FontWeight.Bold, color = colors.onSurface)
                             if (uiState.user?.githubUrl?.isNotBlank() == true) {
                                 Spacer(modifier = Modifier.width(6.dp))
                                 CheckBadgeIcon(color = colors.tertiary, modifier = Modifier.size(16.dp))
                             }
                         }
-                        Text(text = userEmail, style = typography.bodyMedium, color = colors.onSurfaceVariant)
+                        Text(text = userEmail.ifBlank { uiState.user?.email.orEmpty() }, style = typography.bodyMedium, color = colors.onSurfaceVariant)
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -159,7 +167,7 @@ fun DesktopProfileScreen(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DesktopStatTile(icon = { HeartIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.likesCount}", label = "Likes", modifier = Modifier.weight(1f))
-                    DesktopStatTile(icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.matchesCount}", label = "Matches", modifier = Modifier.weight(1f))
+                    DesktopStatTile(icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.conversationsCount}", label = "Chats", modifier = Modifier.weight(1f))
                     DesktopStatTile(icon = { BoltIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.user?.interests?.size ?: 0}", label = "Interests", modifier = Modifier.weight(1f))
                 }
 
@@ -210,7 +218,7 @@ fun DesktopProfileScreen(
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Go ad-free and unlock unlimited connects and priority visibility.",
+                                    text = "Go ad-free and filter Discover by occupation, experience, interests, languages, distance and lifestyle.",
                                     style = typography.bodySmall,
                                     color = Color.White.copy(alpha = 0.9f),
                                     lineHeight = 18.sp
@@ -236,6 +244,8 @@ fun DesktopProfileScreen(
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     DesktopMenuRow(icon = { HelpCircleIcon(color = colors.onSurface, modifier = Modifier.size(20.dp)) }, title = "Help & Support", onClick = onOpenSupportClick)
+                    // Deactivation and deletion both live behind here — neither belongs one click away.
+                    DesktopMenuRow(icon = { GearIcon(color = colors.onSurface, modifier = Modifier.size(20.dp)) }, title = "Account Settings", onClick = onOpenAccountSettingsClick)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -273,7 +283,21 @@ fun DesktopProfileScreen(
                                 }
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     uiState.payments.forEach { payment ->
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        val invoice = uiState.billing?.invoiceFor(payment.paymentId)
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                // Admin grants carry no invoice; that row stays inert.
+                                                .then(
+                                                    if (invoice != null) {
+                                                        Modifier.clickable { openInvoice = invoice }
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                ),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = payment.plan?.label ?: payment.planId,
@@ -286,6 +310,14 @@ fun DesktopProfileScreen(
                                                     style = typography.bodySmall,
                                                     color = colors.onSurfaceVariant
                                                 )
+                                                if (invoice != null) {
+                                                    Text(
+                                                        text = "Invoice ${invoice.invoiceNumber} · View",
+                                                        style = typography.bodySmall,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = colors.primary
+                                                    )
+                                                }
                                             }
                                             Text(
                                                 text = payment.amountLabel(),
@@ -304,8 +336,9 @@ fun DesktopProfileScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Confirms first — a mis-click here should not end the session.
                     Surface(
-                        onClick = onLogout,
+                        onClick = { showLogoutConfirm = true },
                         shape = RoundedCornerShape(18.dp),
                         color = colors.errorContainer.copy(alpha = 0.2f),
                         border = BorderStroke(1.dp, colors.error.copy(alpha = 0.3f)),
@@ -317,84 +350,19 @@ fun DesktopProfileScreen(
                             Text(text = "Log Out", style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.error)
                         }
                     }
-
-                    Surface(
-                        onClick = { showDeleteConfirm = true },
-                        enabled = !uiState.isDeletingAccount,
-                        shape = RoundedCornerShape(18.dp),
-                        color = colors.error,
-                        modifier = Modifier.widthIn(min = 220.dp).height(52.dp)
-                    ) {
-                        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-                            if (uiState.isDeletingAccount) {
-                                CircularProgressIndicator(color = colors.onError, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                            } else {
-                                Text(text = "Delete My Account", style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onError)
-                            }
-                        }
-                    }
-                }
-
-                if (uiState.deleteError.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = uiState.deleteError, style = typography.bodySmall, color = colors.error)
                 }
             }
         }
     }
 
-    if (showDeleteConfirm) {
-        DesktopDeleteAccountDialog(
+    if (showLogoutConfirm) {
+        LogoutConfirmDialog(
             onConfirm = {
-                showDeleteConfirm = false
-                viewModel.deleteAccount()
+                showLogoutConfirm = false
+                onLogout()
             },
-            onDismiss = { showDeleteConfirm = false }
+            onDismiss = { showLogoutConfirm = false }
         )
-    }
-}
-
-@Composable
-private fun DesktopDeleteAccountDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val typography = MaterialTheme.typography
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, shadowElevation = 8.dp) {
-            Column(modifier = Modifier.widthIn(max = 420.dp).padding(24.dp)) {
-                Text(text = "Delete your account?", style = typography.titleLarge, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "This erases your profile, photos, matches, messages, likes and subscription records permanently. It cannot be undone, and any time left on an MindMingle+ plan is lost.",
-                    style = typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                    lineHeight = 20.sp
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(50),
-                        color = colors.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.weight(1f).height(46.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(text = "Keep account", style = typography.titleSmall, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
-                        }
-                    }
-                    Surface(
-                        onClick = onConfirm,
-                        shape = RoundedCornerShape(50),
-                        color = colors.error,
-                        modifier = Modifier.weight(1f).height(46.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(text = "Delete forever", style = typography.titleSmall, fontWeight = FontWeight.Bold, color = colors.onError)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

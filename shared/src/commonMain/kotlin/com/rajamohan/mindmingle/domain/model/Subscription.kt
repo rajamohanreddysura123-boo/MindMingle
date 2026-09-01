@@ -21,8 +21,6 @@ data class Subscription(
      */
     fun isActiveAt(nowMillis: Long): Boolean = currentPeriodEnd > nowMillis && status != "revoked"
 
-    val isCancelled: Boolean get() = status == "cancelled" || status == "revoked"
-
     fun daysLeftAt(nowMillis: Long): Int {
         if (!isActiveAt(nowMillis)) return 0
         val remaining = currentPeriodEnd - nowMillis

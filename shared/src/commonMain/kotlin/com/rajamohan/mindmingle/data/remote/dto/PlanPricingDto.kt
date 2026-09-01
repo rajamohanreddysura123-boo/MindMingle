@@ -12,31 +12,13 @@ data class PlanPricingDto(
     val annual: Long = 0L
 )
 
+/**
+ * `appConfig/plans` as stored in Firestore. Read by every signed-in client, written only by an
+ * admin (firestore.rules) — pricing does not go through a Cloud Function.
+ */
 @Serializable
 data class PlanCatalogDto(
     val enabled: Boolean = true,
     val defaultCountry: String = "US",
     val countries: Map<String, PlanPricingDto> = emptyMap()
 )
-
-@Serializable
-data class PlanPricingRequestDto(val countryHint: String = "")
-
-@Serializable
-data class PlanPricingResponseDto(
-    val country: String = "",
-    val enabled: Boolean = true,
-    val defaultCountry: String = "US",
-    val pricing: PlanPricingDto? = null,
-    val countries: Map<String, PlanPricingDto> = emptyMap()
-)
-
-@Serializable
-data class SavePlanPricingRequestDto(
-    val enabled: Boolean,
-    val defaultCountry: String,
-    val countries: Map<String, PlanPricingDto>
-)
-
-@Serializable
-data class SavePlanPricingResponseDto(val saved: Int = 0)

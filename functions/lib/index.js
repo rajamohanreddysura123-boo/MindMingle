@@ -33,20 +33,49 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyEmailOtp = exports.requestEmailOtp = void 0;
+exports.verifyEmailOtp = exports.requestEmailOtp = exports.subscriptionReminders = exports.onSupportMessageCreated = exports.onMatchCreated = exports.onLikeReceived = exports.onChatMessageCreated = exports.adminSubscriberStats = exports.adminListSubscribers = exports.adminCancelSubscription = exports.adminSetSubscription = exports.recordPaymentFailure = exports.getBillingHistory = exports.razorpayWebhook = exports.verifyRazorpayPayment = exports.createRazorpayOrder = void 0;
+// First, and deliberately so: it pins the region for every function defined below, including
+// the ones re-exported from ./razorpay and ./notifications.
+require("./options");
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 admin.initializeApp();
 const db = admin.firestore();
+var razorpay_1 = require("./razorpay");
+Object.defineProperty(exports, "createRazorpayOrder", { enumerable: true, get: function () { return razorpay_1.createRazorpayOrder; } });
+Object.defineProperty(exports, "verifyRazorpayPayment", { enumerable: true, get: function () { return razorpay_1.verifyRazorpayPayment; } });
+Object.defineProperty(exports, "razorpayWebhook", { enumerable: true, get: function () { return razorpay_1.razorpayWebhook; } });
+Object.defineProperty(exports, "getBillingHistory", { enumerable: true, get: function () { return razorpay_1.getBillingHistory; } });
+Object.defineProperty(exports, "recordPaymentFailure", { enumerable: true, get: function () { return razorpay_1.recordPaymentFailure; } });
+Object.defineProperty(exports, "adminSetSubscription", { enumerable: true, get: function () { return razorpay_1.adminSetSubscription; } });
+Object.defineProperty(exports, "adminCancelSubscription", { enumerable: true, get: function () { return razorpay_1.adminCancelSubscription; } });
+var subscribers_1 = require("./subscribers");
+Object.defineProperty(exports, "adminListSubscribers", { enumerable: true, get: function () { return subscribers_1.adminListSubscribers; } });
+Object.defineProperty(exports, "adminSubscriberStats", { enumerable: true, get: function () { return subscribers_1.adminSubscriberStats; } });
+var notifications_1 = require("./notifications");
+Object.defineProperty(exports, "onChatMessageCreated", { enumerable: true, get: function () { return notifications_1.onChatMessageCreated; } });
+Object.defineProperty(exports, "onLikeReceived", { enumerable: true, get: function () { return notifications_1.onLikeReceived; } });
+Object.defineProperty(exports, "onMatchCreated", { enumerable: true, get: function () { return notifications_1.onMatchCreated; } });
+Object.defineProperty(exports, "onSupportMessageCreated", { enumerable: true, get: function () { return notifications_1.onSupportMessageCreated; } });
+Object.defineProperty(exports, "subscriptionReminders", { enumerable: true, get: function () { return notifications_1.subscriptionReminders; } });
 /**
- * The one hardcoded admin address for OO. Whoever verifies this email via
- * requestEmailOtp/verifyEmailOtp gets admins/{uid} set for their Firebase Auth
- * account. Firebase Auth resolves accounts by email regardless of sign-in
- * method, so once this is set, that same person's Google sign-in on mobile
- * (see AuthViewModel.admitIfAllowed / OOAdminRepository.isCurrentUserAdmin)
- * is recognized as admin automatically — no separate mobile-side check needed.
+ * No address is special here. Admin rights are `users/{uid}.userType == "admin"`, set by hand in
+ * the Firebase Console — sign-in never promotes anyone. See firestore.rules isAdmin().
  */
-const ADMIN_EMAIL = "rajamohanreddysura123@gmail.com";
+/**
+ * Who `verifyEmailOtp` runs as.
+ *
+ * Minting a custom token means signing a JWT, and a deployed function holds no private key — it
+ * asks the IAM Credentials API to sign for it (`iam.serviceAccounts.signBlob`). The default
+ * compute service account this project's functions otherwise run as does not have that, so every
+ * verify died with `auth/insufficient-permission` and surfaced to the client as a bare INTERNAL.
+ *
+ * The Firebase Admin SDK service account already holds `roles/iam.serviceAccountTokenCreator`
+ * project-wide, so pinning this one function to it makes signing work without depending on an
+ * IAM grant that has to be maintained by hand. Only this function needs it; everything else stays
+ * on the default account.
+ */
+const OTP_SIGNER_SERVICE_ACCOUNT = "firebase-adminsdk-fbsvc@tech-connect-44987.iam.gserviceaccount.com";
 const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -79,20 +108,20 @@ exports.requestEmailOtp = (0, https_1.onCall)(async (request) => {
     await db.collection("mail").add({
         to: email,
         message: {
-            subject: "Your OO verification code",
-            text: `Your OO verification code is ${code}. It expires in 5 minutes. If you didn't request this, you can ignore this email.`,
-            html: `<p>Your OO verification code is <b>${code}</b>.</p><p>It expires in 5 minutes. If you didn't request this, you can ignore this email.</p>`,
+            subject: "Your MindMingle verification code",
+            text: `Your MindMingle verification code is ${code}. It expires in 5 minutes. If you didn't request this, you can ignore this email.`,
+            html: `<p>Your MindMingle verification code is <b>${code}</b>.</p><p>It expires in 5 minutes. If you didn't request this, you can ignore this email.</p>`,
         },
     });
     return { success: true };
 });
 /**
  * Verifies the mailed code. On success: ensures a Firebase Auth user exists for
- * that email (creating one if this is a brand-new sign-in), flips admins/{uid}
- * when the email is the reserved admin address, and returns a custom token so
- * the client can sign in as that uid.
+ * that email (creating one if this is a brand-new sign-in) and returns a custom
+ * token so the client can sign in as that uid. Grants nothing — every account
+ * that comes through here is an ordinary user until userType says otherwise.
  */
-exports.verifyEmailOtp = (0, https_1.onCall)(async (request) => {
+exports.verifyEmailOtp = (0, https_1.onCall)({ serviceAccount: OTP_SIGNER_SERVICE_ACCOUNT }, async (request) => {
     const email = String(request.data?.email ?? "").trim();
     const code = String(request.data?.code ?? "").trim();
     if (!email || !code) {
@@ -118,7 +147,6 @@ exports.verifyEmailOtp = (0, https_1.onCall)(async (request) => {
         await docRef.update({ attempts: admin.firestore.FieldValue.increment(1) });
         throw new https_1.HttpsError("permission-denied", "Incorrect code");
     }
-    await docRef.delete();
     const normalized = normalizeEmail(email);
     let userRecord;
     try {
@@ -127,14 +155,12 @@ exports.verifyEmailOtp = (0, https_1.onCall)(async (request) => {
     catch {
         userRecord = await admin.auth().createUser({ email: normalized, emailVerified: true });
     }
-    if (normalized === ADMIN_EMAIL.toLowerCase()) {
-        await db.collection("admins").doc(userRecord.uid).set({
-            email: normalized,
-            grantedAt: admin.firestore.FieldValue.serverTimestamp(),
-            grantedVia: "emailOtp",
-        }, { merge: true });
-    }
     const customToken = await admin.auth().createCustomToken(userRecord.uid);
+    // Deleted only once the token exists. Deleting first meant any failure past this point — the
+    // signing permission error this project actually hit — burned a code the user had typed
+    // correctly, forcing a new email for every retry. The replay window is the few milliseconds
+    // between minting and deleting, and the code is single-use from the next request onward.
+    await docRef.delete();
     return { customToken, uid: userRecord.uid };
 });
 //# sourceMappingURL=index.js.map

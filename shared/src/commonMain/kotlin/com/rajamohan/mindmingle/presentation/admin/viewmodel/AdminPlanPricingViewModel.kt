@@ -25,7 +25,12 @@ internal data class PricingRow(
 ) {
     val monthlyMinor: Long? get() = parseMajorToMinor(monthlyInput, decimals)
     val annualMinor: Long? get() = parseMajorToMinor(annualInput, decimals)
-    val isValid: Boolean get() = (monthlyMinor ?: 0L) > 0L && (annualMinor ?: 0L) > 0L
+
+    /** Both fields empty: this market is not sold yet and falls back to the default country. */
+    val isUnpriced: Boolean get() = monthlyInput.isBlank() && annualInput.isBlank()
+
+    val isValid: Boolean
+        get() = isUnpriced || ((monthlyMinor ?: 0L) > 0L && (annualMinor ?: 0L) > 0L)
 
     fun toPricing(): CountryPricing = CountryPricing(
         countryCode = countryCode,
@@ -90,9 +95,10 @@ internal fun parseMajorToMinor(input: String, decimals: Int): Long? {
     return wholeValue * multiplier + fractionValue
 }
 
+/** Blank for an unpriced market, so the field reads as "not set" rather than a real price of 0. */
 internal fun minorToMajorInput(amount: Long, decimals: Int): String {
-    val formatted = formatMinorAmount(amount, decimals, symbol = "")
-    return formatted
+    if (amount <= 0L) return ""
+    return formatMinorAmount(amount, decimals, symbol = "")
 }
 
 internal class AdminPlanPricingViewModel(
@@ -146,10 +152,12 @@ internal class AdminPlanPricingViewModel(
                 resolvedCountry = state.defaultCountry
             )
 
+            val priced = state.rows.count { !it.isUnpriced }
+
             savePlanCatalogUseCase(catalog).fold(
                 onSuccess = { saved ->
                     _uiState.update {
-                        it.copy(isSaving = false, message = "Saved $saved countries")
+                        it.copy(isSaving = false, message = "Saved $saved countries, $priced priced")
                     }
                 },
                 onFailure = { error ->

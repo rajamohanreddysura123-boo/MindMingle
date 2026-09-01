@@ -2,7 +2,6 @@ package com.rajamohan.mindmingle.domain.model
 
 import com.rajamohan.mindmingle.data.remote.dto.PlanCatalogDto
 import com.rajamohan.mindmingle.data.remote.dto.PlanPricingDto
-import com.rajamohan.mindmingle.data.remote.dto.PlanPricingResponseDto
 
 data class CountryPricing(
     val countryCode: String = "",
@@ -36,8 +35,14 @@ data class PlanCatalog(
     val countries: Map<String, CountryPricing> = emptyMap(),
     val resolvedCountry: String = ""
 ) {
+    /**
+     * A country row only bills if it has actually been priced — every country ships with a
+     * currency but only the tuned markets carry amounts, so an unpriced market falls back to
+     * [defaultCountry] instead of quoting zero.
+     */
     val pricing: CountryPricing?
-        get() = countries[resolvedCountry] ?: countries[defaultCountry]
+        get() = countries[resolvedCountry]?.takeIf { it.isValid }
+            ?: countries[defaultCountry]?.takeIf { it.isValid }
 
     val sortedCountries: List<CountryPricing>
         get() = countries.values.sortedBy { it.countryCode }
@@ -85,11 +90,4 @@ fun PlanCatalogDto.toDomain(resolvedCountry: String = ""): PlanCatalog = PlanCat
     defaultCountry = defaultCountry,
     countries = countries.mapValues { (code, dto) -> dto.toDomain(code) },
     resolvedCountry = resolvedCountry.ifBlank { defaultCountry }
-)
-
-fun PlanPricingResponseDto.toDomain(): PlanCatalog = PlanCatalog(
-    enabled = enabled,
-    defaultCountry = defaultCountry,
-    countries = countries.mapValues { (code, dto) -> dto.toDomain(code) },
-    resolvedCountry = country.ifBlank { defaultCountry }
 )

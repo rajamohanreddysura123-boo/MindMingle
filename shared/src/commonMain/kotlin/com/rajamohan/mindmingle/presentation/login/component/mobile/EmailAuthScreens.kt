@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -45,6 +45,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -55,24 +56,29 @@ import com.rajamohan.mindmingle.presentation.theme.Spacing
 import kotlinx.coroutines.delay
 
 /**
- * Desktop's primary sign-in entry — no working Google OAuth on JVM, so email + a mailed
- * verification code is how a desktop user (admin or not) authenticates.
+ * Email + password sign-in. Desktop's only way in (no working Google OAuth on JVM) and mobile's
+ * alternative to Google. The same screen registers: [isNewAccount] flips the button and which
+ * event the caller fires. Password rules are Firebase's — 6 characters minimum.
  */
 @Composable
-fun EmailInputScreen(
-    isSending: Boolean = false,
+fun EmailPasswordScreen(
+    isSubmitting: Boolean = false,
     errorMessage: String = "",
-    onSendCode: (email: String) -> Unit,
+    onSubmit: (email: String, password: String, isNewAccount: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isNewAccount by remember { mutableStateOf(false) }
     val isValidEmail = remember(email) { Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email) }
+    val isValidPassword = password.length >= 6
+    val canSubmit = isValidEmail && isValidPassword && !isSubmitting
 
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
-        Box(modifier = Modifier.fillMaxSize().safeContentPadding(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier
                     .widthIn(max = 420.dp)
@@ -93,7 +99,7 @@ fun EmailInputScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "Sign in with Email",
+                    text = if (isNewAccount) "Create your account" else "Sign in with Email",
                     style = typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = colors.onBackground,
@@ -101,7 +107,11 @@ fun EmailInputScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "We'll email you a one-time code to verify it's you.",
+                    text = if (isNewAccount) {
+                        "Pick a password of at least 6 characters."
+                    } else {
+                        "Enter your email and password to continue."
+                    },
                     style = typography.bodyMedium,
                     color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -138,6 +148,38 @@ fun EmailInputScreen(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(colors.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    BasicTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        textStyle = typography.bodyLarge.copy(color = colors.onSurface),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner ->
+                            if (password.isEmpty()) {
+                                Text(
+                                    text = "Password",
+                                    style = typography.bodyLarge,
+                                    color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                            inner()
+                        }
+                    )
+                }
+
                 if (errorMessage.isNotBlank()) {
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(text = errorMessage, style = typography.bodySmall, color = colors.error, textAlign = TextAlign.Center)
@@ -146,25 +188,35 @@ fun EmailInputScreen(
                 Spacer(modifier = Modifier.height(22.dp))
 
                 Surface(
-                    onClick = { if (isValidEmail && !isSending) onSendCode(email.trim()) },
-                    enabled = isValidEmail && !isSending,
+                    onClick = { if (canSubmit) onSubmit(email.trim(), password, isNewAccount) },
+                    enabled = canSubmit,
                     shape = RoundedCornerShape(50),
-                    color = if (isValidEmail) colors.primary else colors.outlineVariant.copy(alpha = 0.4f),
+                    color = if (canSubmit) colors.primary else colors.outlineVariant.copy(alpha = 0.4f),
                     modifier = Modifier.fillMaxWidth().height(54.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        if (isSending) {
+                        if (isSubmitting) {
                             CircularProgressIndicator(color = colors.onPrimary, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
                         } else {
                             Text(
-                                text = "Send Code",
+                                text = if (isNewAccount) "Create account" else "Continue",
                                 style = typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isValidEmail) colors.onPrimary else colors.onSurfaceVariant.copy(alpha = 0.5f)
+                                color = if (canSubmit) colors.onPrimary else colors.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = if (isNewAccount) "Already have an account? Sign in" else "New here? Create an account",
+                    style = typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.primary,
+                    modifier = Modifier.clickable(enabled = !isSubmitting) { isNewAccount = !isNewAccount }
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -181,7 +233,7 @@ fun EmailInputScreen(
 }
 
 /**
- * Verifies the 6-digit code emailed by [EmailInputScreen]'s request (or auto-triggered admin
+ * Verifies the 6-digit code emailed by AuthEvent.RequestEmailOtp (or auto-triggered admin
  * 2FA after a Google sign-in matching the reserved admin email — see AuthViewModel).
  */
 @Composable
@@ -221,7 +273,7 @@ fun EmailOtpVerificationScreen(
                 modifier = Modifier
                     .widthIn(max = 520.dp)
                     .fillMaxSize()
-                    .safeContentPadding()
+                    .safeDrawingPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = Spacing.screenHorizontal, vertical = if (isLandscape) 8.dp else 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally

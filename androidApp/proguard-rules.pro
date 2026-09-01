@@ -41,6 +41,15 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# --- Room / WorkManager ---
+# play-services-ads drags in androidx.work 2.7.0, which sits on Room 2.2.5.
+# Room resolves its database at runtime with Class.forName("<Database>_Impl")
+# and a no-arg constructor, and Room 2.2.5 ships no consumer rules — R8 strips
+# WorkDatabase_Impl and app startup dies in WorkManagerInitializer.
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
+-keep @androidx.room.Database class * { *; }
+-dontwarn androidx.room.paging.**
+
 # Koin: our modules wire dependencies via explicit lambdas, not classpath
 # scanning, so no reflection-based keep rules are needed beyond Koin's own
 # bundled consumer-proguard-rules.pro.

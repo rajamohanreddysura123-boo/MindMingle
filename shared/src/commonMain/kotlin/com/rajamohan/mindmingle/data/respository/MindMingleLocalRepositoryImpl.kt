@@ -38,6 +38,40 @@ internal class MindMingleLocalRepositoryImpl(
         }
     }
 
+    override suspend fun getLastLikeAlertAt(uid: String): Long {
+        return try {
+            mindMingleDatabaseProvider.getLastLikeAlertAt(uid)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0L
+        }
+    }
+
+    override suspend fun saveLastLikeAlertAt(uid: String, millis: Long) {
+        try {
+            mindMingleDatabaseProvider.saveLastLikeAlertAt(uid, millis)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override suspend fun getLastMessageAlertAt(uid: String): Long {
+        return try {
+            mindMingleDatabaseProvider.getLastMessageAlertAt(uid)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0L
+        }
+    }
+
+    override suspend fun saveLastMessageAlertAt(uid: String, seconds: Long) {
+        try {
+            mindMingleDatabaseProvider.saveLastMessageAlertAt(uid, seconds)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override suspend fun saveDiscoverFilters(criteria: DiscoverFilterCriteria): Boolean {
         return try {
             mindMingleDatabaseProvider.saveDiscoverFilters(criteria = criteria)

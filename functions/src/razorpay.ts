@@ -203,72 +203,8 @@ async function grantPlan(args: {
   return result;
 }
 
-/**
- * The price list as the client should display it, plus which market this caller is billed
- * in. Read-only — no secret, no order created.
- */
-export const getPlanPricing = onCall(async (request) => {
-  const catalog = await loadCatalog();
-  const uid = request.auth?.uid;
-  const hint = String(request.data?.countryHint ?? "");
-  const country = uid ? await resolveCountry(uid, catalog, hint) : catalog.defaultCountry;
-  const pricing = pricingFor(catalog, country);
 
-  return {
-    country,
-    enabled: catalog.enabled,
-    defaultCountry: catalog.defaultCountry,
-    pricing: pricing ?? null,
-    countries: catalog.countries,
-  };
-});
 
-/**
- * Admin-only write of the whole price list. Rows are validated here as well as by
- * firestore.rules, so a bad amount can never become a live charge.
- */
-export const savePlanPricing = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid || !(await isAdmin(uid))) {
-    throw new HttpsError("permission-denied", "Admins only");
-  }
-
-  const countries = request.data?.countries as Record<string, CountryPricing> | undefined;
-  if (!countries || Object.keys(countries).length === 0) {
-    throw new HttpsError("invalid-argument", "countries is required");
-  }
-
-  for (const [code, row] of Object.entries(countries)) {
-    if (!/^[A-Z]{2}$/.test(code) || !isValidPricing(row)) {
-      throw new HttpsError("invalid-argument", `Invalid pricing row for ${code}`);
-    }
-  }
-
-  const defaultCountry = String(request.data?.defaultCountry ?? DEFAULT_PLAN_CATALOG.defaultCountry);
-  if (!countries[defaultCountry]) {
-    throw new HttpsError("invalid-argument", "defaultCountry must exist in countries");
-  }
-
-  const catalog: PlanCatalog = {
-    enabled: request.data?.enabled !== false,
-    defaultCountry,
-    countries,
-  };
-
-  await PLANS_DOC.set(catalog);
-  return { saved: Object.keys(countries).length };
-});
-
-/** Admin-only: restores every row to the shipped seed table. */
-export const resetPlanPricing = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid || !(await isAdmin(uid))) {
-    throw new HttpsError("permission-denied", "Admins only");
-  }
-
-  await PLANS_DOC.set(DEFAULT_PLAN_CATALOG);
-  return { saved: Object.keys(DEFAULT_PLAN_CATALOG.countries).length };
-});
 
 /**
  * Step 1 of checkout — the client sends only a plan id and gets back an order to open
@@ -413,80 +349,6 @@ export const verifyRazorpayPayment = onCall(
   }
 );
 
-/**
- * Looks a payment up at Razorpay after the fact — "did that actually go through?".
- *
- * Readable by the payer or an admin. If Razorpay says captured but no plan was ever granted
- * (app killed between paying and verifying, and the webhook never fired), this grants it, so
- * opening the billing screen is itself a repair path.
- */
-export const getPaymentDetails = onCall(
-  { secrets: [razorpayKeyId, razorpayKeySecret] },
-  async (request) => {
-    const callerUid = request.auth?.uid;
-    if (!callerUid) {
-      throw new HttpsError("unauthenticated", "Sign in first");
-    }
-
-    const paymentId = String(request.data?.paymentId ?? "");
-    if (!paymentId) {
-      throw new HttpsError("invalid-argument", "paymentId is required");
-    }
-
-    const payment = await razorpayFetch(`/payments/${paymentId}`, { method: "GET" });
-    const orderId = String(payment.order_id ?? "");
-    const order = orderId ? await razorpayFetch(`/orders/${orderId}`, { method: "GET" }) : undefined;
-
-    const ownerUid = String(order?.notes?.uid ?? payment?.notes?.uid ?? "");
-    const callerIsAdmin = await isAdmin(callerUid);
-    if (ownerUid !== callerUid && !callerIsAdmin) {
-      throw new HttpsError("permission-denied", "That payment belongs to another account");
-    }
-
-    const planId = String(order?.notes?.planId ?? payment?.notes?.planId ?? "");
-    const country = String(order?.notes?.country ?? payment?.notes?.country ?? "");
-
-    let granted = false;
-    if (payment.status === "captured" && ownerUid && PLAN_DAYS[planId]) {
-      const existing = await db()
-        .collection("subscriptions")
-        .doc(ownerUid)
-        .collection("payments")
-        .doc(paymentId)
-        .get();
-
-      if (!existing.exists) {
-        await grantPlan({
-          uid: ownerUid,
-          planId,
-          paymentId,
-          orderId,
-          amount: Number(payment.amount ?? 0),
-          currency: String(payment.currency ?? ""),
-          country,
-          source: "lookup-repair",
-        });
-        granted = true;
-      }
-    }
-
-    return {
-      paymentId,
-      orderId,
-      planId,
-      country,
-      status: String(payment.status ?? ""),
-      amount: Number(payment.amount ?? 0),
-      currency: String(payment.currency ?? ""),
-      method: String(payment.method ?? ""),
-      email: String(payment.email ?? ""),
-      contact: String(payment.contact ?? ""),
-      createdAt: Number(payment.created_at ?? 0) * 1000,
-      description: String(payment.description ?? ""),
-      grantedNow: granted,
-    };
-  }
-);
 
 /**
  * Order history. A user sees their own; an admin can pass any uid to see someone else's,

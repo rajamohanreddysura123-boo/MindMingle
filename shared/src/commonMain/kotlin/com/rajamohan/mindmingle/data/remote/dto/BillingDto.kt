@@ -14,6 +14,46 @@ data class PaymentRecordDto(
     val createdAt: Long = 0L
 )
 
+/**
+ * One issued invoice, as `getBillingHistory` returns it. Amounts are in the currency's
+ * smallest unit, exactly like [PaymentRecordDto].
+ */
+/** One tax line on an invoice. [rate] is basis points: 1800 = 18%. */
+@Serializable
+data class TaxComponentDto(
+    val label: String = "",
+    val rate: Int = 0,
+    val amount: Long = 0L
+)
+
+@Serializable
+data class InvoiceDto(
+    val invoiceNumber: String = "",
+    val paymentId: String = "",
+    val planId: String = "",
+    val planLabel: String = "",
+    val description: String = "",
+    val subtotal: Long = 0L,
+    val taxAmount: Long = 0L,
+    val total: Long = 0L,
+    val currency: String = "",
+    val symbol: String = "",
+    val decimals: Int = 2,
+    val country: String = "",
+    val issuedAt: Long = 0L,
+    val periodEnd: Long = 0L,
+    val status: String = "",
+    val taxLabel: String = "",
+    val taxRate: Int = 0,
+    val taxComponents: List<TaxComponentDto> = emptyList(),
+    val placeOfSupply: String = "",
+    val isExport: Boolean = false,
+    val taxNote: String = "",
+    val sellerLegalName: String = "",
+    val sellerAddress: String = "",
+    val sellerTaxId: String = ""
+)
+
 @Serializable
 data class BillingHistoryRequestDto(val uid: String = "")
 
@@ -25,28 +65,24 @@ data class BillingHistoryResponseDto(
     val currentPeriodEnd: Long = 0L,
     val billingCountry: String = "",
     val billingCurrency: String = "",
-    val payments: List<PaymentRecordDto> = emptyList()
+    val payments: List<PaymentRecordDto> = emptyList(),
+    val invoices: List<InvoiceDto> = emptyList()
+)
+
+/**
+ * Tells the backend a checkout came back with an error. Sent so a decline the Razorpay
+ * webhook never sees still leaves a record and reaches the user by email.
+ */
+@Serializable
+data class RecordPaymentFailureRequestDto(
+    val orderId: String,
+    val planId: String = "",
+    val reason: String = ""
 )
 
 @Serializable
 data class PaymentDetailsRequestDto(val paymentId: String)
 
-@Serializable
-data class PaymentDetailsResponseDto(
-    val paymentId: String = "",
-    val orderId: String = "",
-    val planId: String = "",
-    val country: String = "",
-    val status: String = "",
-    val amount: Long = 0L,
-    val currency: String = "",
-    val method: String = "",
-    val email: String = "",
-    val contact: String = "",
-    val createdAt: Long = 0L,
-    val description: String = "",
-    val grantedNow: Boolean = false
-)
 
 @Serializable
 data class AdminSetSubscriptionRequestDto(
@@ -66,17 +102,4 @@ data class AdminSubscriptionResponseDto(
     val planId: String = "",
     val status: String = "",
     val currentPeriodEnd: Long = 0L
-)
-
-@Serializable
-data class AdminDeleteUserRequestDto(
-    val uid: String,
-    val ban: Boolean,
-    val reason: String = ""
-)
-
-@Serializable
-data class DeleteAccountResponseDto(
-    val deleted: Boolean = false,
-    val banned: Boolean = false
 )

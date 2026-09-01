@@ -86,6 +86,33 @@ fun TelescopeIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
     }
 }
 
+/** Map pin. Sits beside a distance wherever one is shown, on the card and on the full profile. */
+@Composable
+fun LocationPinIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeWidth = w * 0.11f
+
+        // Teardrop: a circle's worth of shoulder either side, closing to a point at the bottom.
+        val body = Path().apply {
+            moveTo(w * 0.5f, h * 0.94f)
+            cubicTo(w * 0.5f, h * 0.94f, w * 0.14f, h * 0.56f, w * 0.14f, h * 0.38f)
+            cubicTo(w * 0.14f, h * 0.16f, w * 0.30f, h * 0.06f, w * 0.5f, h * 0.06f)
+            cubicTo(w * 0.70f, h * 0.06f, w * 0.86f, h * 0.16f, w * 0.86f, h * 0.38f)
+            cubicTo(w * 0.86f, h * 0.56f, w * 0.5f, h * 0.94f, w * 0.5f, h * 0.94f)
+            close()
+        }
+        drawPath(body, color = color, style = Stroke(width = strokeWidth, join = StrokeJoin.Round))
+
+        drawCircle(
+            color = color,
+            radius = w * 0.13f,
+            center = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.38f)
+        )
+    }
+}
+
 @Composable
 fun CrossIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
     Canvas(modifier = modifier) {
@@ -364,51 +391,6 @@ fun PersonIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
 }
 
 @Composable
-fun ShieldIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val shield = Path().apply {
-            moveTo(w * 0.5f, h * 0.08f)
-            lineTo(w * 0.86f, h * 0.22f)
-            lineTo(w * 0.86f, h * 0.52f)
-            cubicTo(w * 0.86f, h * 0.74f, w * 0.70f, h * 0.88f, w * 0.5f, h * 0.94f)
-            cubicTo(w * 0.30f, h * 0.88f, w * 0.14f, h * 0.74f, w * 0.14f, h * 0.52f)
-            lineTo(w * 0.14f, h * 0.22f)
-            close()
-        }
-        drawPath(shield, color = color, style = Stroke(width = w * 0.08f, join = StrokeJoin.Round))
-    }
-}
-
-@Composable
-fun BellIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = w * 0.08f
-        val bell = Path().apply {
-            moveTo(w * 0.24f, h * 0.66f)
-            cubicTo(w * 0.24f, h * 0.40f, w * 0.34f, h * 0.20f, w * 0.5f, h * 0.20f)
-            cubicTo(w * 0.66f, h * 0.20f, w * 0.76f, h * 0.40f, w * 0.76f, h * 0.66f)
-            lineTo(w * 0.86f, h * 0.78f)
-            lineTo(w * 0.14f, h * 0.78f)
-            close()
-        }
-        drawPath(bell, color = color, style = Stroke(width = strokeWidth, join = StrokeJoin.Round, cap = StrokeCap.Round))
-        drawArc(
-            color = color,
-            startAngle = 20f,
-            sweepAngle = 140f,
-            useCenter = false,
-            topLeft = androidx.compose.ui.geometry.Offset(w * 0.38f, h * 0.80f),
-            size = androidx.compose.ui.geometry.Size(w * 0.24f, h * 0.16f),
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        )
-    }
-}
-
-@Composable
 fun HelpCircleIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
     Canvas(modifier = modifier) {
         val w = size.width
@@ -559,23 +541,5 @@ fun SendIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
             close()
         }
         drawPath(path, color = color)
-    }
-}
-
-@Composable
-fun EnterKeyIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = w * 0.12f
-        val path = Path().apply {
-            moveTo(w * 0.82f, h * 0.22f)
-            lineTo(w * 0.82f, h * 0.62f)
-            lineTo(w * 0.24f, h * 0.62f)
-            moveTo(w * 0.44f, h * 0.42f)
-            lineTo(w * 0.20f, h * 0.62f)
-            lineTo(w * 0.44f, h * 0.82f)
-        }
-        drawPath(path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }

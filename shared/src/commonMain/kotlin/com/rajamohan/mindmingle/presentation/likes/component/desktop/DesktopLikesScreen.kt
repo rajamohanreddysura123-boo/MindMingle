@@ -68,12 +68,12 @@ fun DesktopLikesScreen(uid: String) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = "Likes & Matches", style = typography.headlineMedium, fontWeight = FontWeight.Bold, color = colors.onBackground)
+                    Text(text = "Likes", style = typography.headlineMedium, fontWeight = FontWeight.Bold, color = colors.onBackground)
                     Text(text = "People who liked your profile", style = typography.bodyMedium, color = colors.onSurfaceVariant)
                 }
                 Surface(shape = RoundedCornerShape(12.dp), color = colors.primaryContainer.copy(alpha = 0.6f)) {
                     Text(
-                        text = "${uiState.likedByUsers.size} New",
+                        text = "${uiState.totalCount} New",
                         style = typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = colors.primary,
@@ -90,7 +90,7 @@ fun DesktopLikesScreen(uid: String) {
                         CircularProgressIndicator(color = colors.primary)
                     }
                 }
-                uiState.likedByUsers.isEmpty() -> {
+                uiState.entries.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             EnvelopeIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(44.dp))
@@ -107,7 +107,8 @@ fun DesktopLikesScreen(uid: String) {
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(uiState.likedByUsers, key = { it.uid }) { item ->
+                        items(uiState.entries, key = { it.user.uid }) { entry ->
+                            val item = entry.user
                             Surface(shape = RoundedCornerShape(22.dp), color = colors.surface, shadowElevation = 3.dp, modifier = Modifier.height(210.dp)) {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     Box(

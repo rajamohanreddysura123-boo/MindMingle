@@ -14,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -73,6 +74,7 @@ import com.rajamohan.mindmingle.presentation.anonymous.component.shared.anonymou
 import com.rajamohan.mindmingle.presentation.anonymous.viewmodel.AnonymousChatEvent
 import com.rajamohan.mindmingle.presentation.anonymous.viewmodel.AnonymousChatViewModel
 import com.rajamohan.mindmingle.presentation.anonymous.viewmodel.AnonymousPhase
+import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.BurnIcon
 import com.rajamohan.mindmingle.presentation.common.icon.GhostIcon
 import com.rajamohan.mindmingle.presentation.common.icon.MaskIcon
@@ -83,7 +85,10 @@ import com.rajamohan.mindmingle.presentation.theme.Spacing
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
-fun AnonymousChatScreen(uid: String) {
+fun AnonymousChatScreen(
+    uid: String,
+    onBack: (() -> Unit)? = null
+) {
     val colors = MaterialTheme.colorScheme
     val viewModel: AnonymousChatViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
@@ -138,6 +143,25 @@ fun AnonymousChatScreen(uid: String) {
                     )
                 }
             }
+
+            // Anonymous chat is reached from inside the Chat tab rather than the bottom nav, so
+            // it needs its own way back. Only drawn when a host supplied one.
+            if (onBack != null) {
+                Surface(
+                    shape = CircleShape,
+                    color = colors.surface.copy(alpha = 0.75f),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .safeDrawingPadding()
+                        .padding(start = Spacing.screenHorizontal, top = 8.dp)
+                        .size(40.dp)
+                        .clickable(onClick = onBack)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        BackArrowIcon(color = colors.onSurface, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -157,7 +181,7 @@ private fun AnonymousLobby(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeContentPadding()
+            .safeDrawingPadding()
             .padding(horizontal = Spacing.screenHorizontal),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -325,7 +349,7 @@ private fun AnonymousSearching(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeContentPadding()
+            .safeDrawingPadding()
             .padding(horizontal = Spacing.screenHorizontal),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -379,7 +403,7 @@ private fun AnonymousNoOneFound(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeContentPadding()
+            .safeDrawingPadding()
             .padding(horizontal = Spacing.screenHorizontal),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -488,7 +512,7 @@ private fun AnonymousRoom(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeContentPadding()
+            .safeDrawingPadding()
     ) {
         Row(
             modifier = Modifier
@@ -697,7 +721,7 @@ private fun AnonymousPartnerLeft(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeContentPadding()
+            .safeDrawingPadding()
             .padding(horizontal = Spacing.screenHorizontal),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center

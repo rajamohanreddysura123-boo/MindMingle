@@ -16,6 +16,12 @@ dependencies {
 
     implementation(libs.androidx.activity.compose)
 
+    // The FCM service has to live in this module — a manifest can only name a class from the
+    // application it belongs to — so the app needs its own view of firebase-messaging. The BOM
+    // comes with it because the artifact is declared without a version.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
 }
@@ -28,8 +34,8 @@ android {
         applicationId = "com.rajamohan.mindmingle"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
     packaging {
         resources {

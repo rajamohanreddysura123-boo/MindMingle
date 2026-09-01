@@ -20,6 +20,10 @@ data class DiscoverFilterCriteria(
     val experienceLevels: Set<String> = emptySet(),
     /** Matched against the `languages` answer in the candidate's `selections` map. */
     val languages: Set<String> = emptySet(),
+    /** ISO 3166-1 alpha-2 codes; empty means any country. MindMingle+ only, enforced server-side. */
+    val countries: Set<String> = emptySet(),
+    /** ADM2 names, matched against a profile's `district`. MindMingle+ only. */
+    val districts: Set<String> = emptySet(),
     /**
      * Lifestyle/intent filters keyed by their profile_options.json field key — one entry per
      * field the user narrowed. Kept as a map so a new filterable field costs a key in
@@ -48,6 +52,8 @@ object DiscoverFilterDefaults {
 fun DiscoverFilterCriteria.withoutPremiumFilters(): DiscoverFilterCriteria = copy(
     maxDistanceKm = null,
     languages = emptySet(),
+    countries = emptySet(),
+    districts = emptySet(),
     detailFilters = emptyMap()
 )
 
@@ -102,3 +108,13 @@ object DiscoverFilterSeed {
         )
     }
 }
+
+/**
+ * One page of the Discover feed. [cursor] resumes the server-side scan on the next call; blank
+ * means the scan reached the end of the collection, so the next request starts over from a fresh
+ * random position.
+ */
+data class DiscoverPage(
+    val profiles: List<User> = emptyList(),
+    val cursor: String = ""
+)

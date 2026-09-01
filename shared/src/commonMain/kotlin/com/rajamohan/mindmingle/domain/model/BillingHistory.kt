@@ -1,7 +1,7 @@
 package com.rajamohan.mindmingle.domain.model
 
 import com.rajamohan.mindmingle.data.remote.dto.BillingHistoryResponseDto
-import com.rajamohan.mindmingle.data.remote.dto.PaymentDetailsResponseDto
+import com.rajamohan.mindmingle.data.remote.dto.InvoiceDto
 import com.rajamohan.mindmingle.data.remote.dto.PaymentRecordDto
 
 data class PaymentRecord(
@@ -27,6 +27,64 @@ data class PaymentRecord(
     }
 }
 
+/**
+ * A receipt the user can be shown or shown to an accountant. Issued server-side, one per
+ * captured payment; the number is what support should be quoted.
+ */
+/** One tax line. [rate] is basis points, so 1800 reads as 18%. */
+data class TaxLine(
+    val label: String,
+    val rate: Int,
+    val amount: Long
+) {
+    fun rateLabel(): String {
+        val percent = rate / 100.0
+        return if (rate % 100 == 0) "${rate / 100}%" else "$percent%"
+    }
+}
+
+data class Invoice(
+    val invoiceNumber: String,
+    val paymentId: String,
+    val planId: String,
+    val planLabel: String,
+    val description: String,
+    val subtotal: Long,
+    val taxAmount: Long,
+    val total: Long,
+    val currency: String,
+    val symbol: String,
+    val decimals: Int,
+    val country: String,
+    val issuedAt: Long,
+    val periodEnd: Long,
+    val status: String,
+    val taxLabel: String = "",
+    val taxRate: Int = 0,
+    val taxLines: List<TaxLine> = emptyList(),
+    val placeOfSupply: String = "",
+    val isExport: Boolean = false,
+    val taxNote: String = "",
+    val sellerLegalName: String = "",
+    val sellerAddress: String = "",
+    val sellerTaxId: String = ""
+) {
+    val isPaid: Boolean get() = status == "paid"
+
+    val issuedLabel: String get() = formatUtcDate(issuedAt)
+
+    val activeUntilLabel: String get() = formatUtcDate(periodEnd)
+
+    val totalLabel: String get() = formatMinorAmount(total, decimals, symbol)
+
+    val subtotalLabel: String get() = formatMinorAmount(subtotal, decimals, symbol)
+
+    /** Each tax line as "CGST (9%)" to "₹8.95", ready to render as rows. */
+    fun taxRows(): List<Pair<String, String>> = taxLines.map { line ->
+        "${line.label} (${line.rateLabel()})" to formatMinorAmount(line.amount, decimals, symbol)
+    }
+}
+
 data class BillingHistory(
     val uid: String = "",
     val planId: String = "",
@@ -34,8 +92,12 @@ data class BillingHistory(
     val currentPeriodEnd: Long = 0L,
     val billingCountry: String = "",
     val billingCurrency: String = "",
-    val payments: List<PaymentRecord> = emptyList()
+    val payments: List<PaymentRecord> = emptyList(),
+    val invoices: List<Invoice> = emptyList()
 ) {
+    /** The invoice for a payment row, when one was issued (admin grants have none). */
+    fun invoiceFor(paymentId: String): Invoice? = invoices.firstOrNull { it.paymentId == paymentId }
+
     val subscription: Subscription
         get() = Subscription(planId = planId, status = status, currentPeriodEnd = currentPeriodEnd)
 
@@ -45,20 +107,6 @@ data class BillingHistory(
         get() = if (currentPeriodEnd > 0L) formatUtcDate(currentPeriodEnd) else "—"
 }
 
-data class PaymentDetails(
-    val paymentId: String,
-    val orderId: String,
-    val planId: String,
-    val country: String,
-    val status: String,
-    val amount: Long,
-    val currency: String,
-    val method: String,
-    val createdAt: Long,
-    val grantedNow: Boolean
-) {
-    val isCaptured: Boolean get() = status == "captured"
-}
 
 private val MONTH_NAMES = listOf(
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -100,6 +148,33 @@ fun PaymentRecordDto.toDomain(): PaymentRecord = PaymentRecord(
     createdAt = createdAt
 )
 
+fun InvoiceDto.toDomain(): Invoice = Invoice(
+    invoiceNumber = invoiceNumber,
+    paymentId = paymentId,
+    planId = planId,
+    planLabel = planLabel,
+    description = description,
+    subtotal = subtotal,
+    taxAmount = taxAmount,
+    total = total,
+    currency = currency,
+    symbol = symbol,
+    decimals = decimals,
+    country = country,
+    issuedAt = issuedAt,
+    periodEnd = periodEnd,
+    status = status,
+    taxLabel = taxLabel,
+    taxRate = taxRate,
+    taxLines = taxComponents.map { TaxLine(label = it.label, rate = it.rate, amount = it.amount) },
+    placeOfSupply = placeOfSupply,
+    isExport = isExport,
+    taxNote = taxNote,
+    sellerLegalName = sellerLegalName,
+    sellerAddress = sellerAddress,
+    sellerTaxId = sellerTaxId
+)
+
 fun BillingHistoryResponseDto.toDomain(): BillingHistory = BillingHistory(
     uid = uid,
     planId = planId,
@@ -107,18 +182,7 @@ fun BillingHistoryResponseDto.toDomain(): BillingHistory = BillingHistory(
     currentPeriodEnd = currentPeriodEnd,
     billingCountry = billingCountry,
     billingCurrency = billingCurrency,
-    payments = payments.map { it.toDomain() }
+    payments = payments.map { it.toDomain() },
+    invoices = invoices.map { it.toDomain() }
 )
 
-fun PaymentDetailsResponseDto.toDomain(): PaymentDetails = PaymentDetails(
-    paymentId = paymentId,
-    orderId = orderId,
-    planId = planId,
-    country = country,
-    status = status,
-    amount = amount,
-    currency = currency,
-    method = method,
-    createdAt = createdAt,
-    grantedNow = grantedNow
-)

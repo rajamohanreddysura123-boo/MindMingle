@@ -1,27 +1,23 @@
 package com.rajamohan.mindmingle.presentation.login.viewmodel
 
 internal sealed class AuthEvent {
-    data class SendOtp(val phone: String) : AuthEvent()
-    data class VerifyOtp(val verificationId: String, val code: String) : AuthEvent()
     data class GoogleSignInVerified(val uid: String, val email: String, val name: String) : AuthEvent()
-    data class PhoneChanged(val phone: String) : AuthEvent()
-    data class OtpCodeChanged(val code: String) : AuthEvent()
-    /** Desktop's primary sign-in — no working Google OAuth on JVM, so email + a mailed code instead. */
+    /** Retired alternative to email + password — kept for when the mailed-code flow is wanted again. */
     data class RequestEmailOtp(val email: String) : AuthEvent()
     data class VerifyEmailOtp(val code: String) : AuthEvent()
+    /** Desktop's sign-in, and mobile's alternative to Google. Plain Firebase Auth. */
+    data class EmailPasswordSignIn(val email: String, val password: String) : AuthEvent()
+    /** Same screen in "Create account" mode — registers, then signs the new account straight in. */
+    data class EmailPasswordSignUp(val email: String, val password: String) : AuthEvent()
     data object ResetState : AuthEvent()
 }
 
 internal data class AuthUiState(
     val isLoading: Boolean = false,
     val isCheckingSession: Boolean = true,
-    val phone: String = "",
-    val otpCode: String = "",
-    val verificationId: String? = null,
     val uid: String? = null,
     val email: String? = null,
     val prefillName: String? = null,
-    val isCodeSent: Boolean = false,
     val isSuccess: Boolean = false,
     /** True once [isSuccess] fires and the signed-in uid already has a completed profile doc. */
     val profileComplete: Boolean = false,

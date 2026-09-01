@@ -1,11 +1,13 @@
 package com.rajamohan.mindmingle.presentation.home.component.desktop
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -39,21 +40,27 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.rajamohan.mindmingle.domain.model.GeoDistance
 import com.rajamohan.mindmingle.domain.model.User
+import com.rajamohan.mindmingle.presentation.account.component.AccountSettingsScreen
 import com.rajamohan.mindmingle.presentation.anonymous.component.desktop.DesktopAnonymousChatScreen
 import com.rajamohan.mindmingle.presentation.chat.component.desktop.DesktopChatScreen
+import com.rajamohan.mindmingle.presentation.common.component.LogoutConfirmDialog
 import com.rajamohan.mindmingle.presentation.common.icon.ChatBubbleIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HeartIcon
 import com.rajamohan.mindmingle.presentation.common.icon.LogoutIcon
 import com.rajamohan.mindmingle.presentation.common.icon.MaskIcon
 import com.rajamohan.mindmingle.presentation.common.icon.PersonIcon
 import com.rajamohan.mindmingle.presentation.common.icon.SparkleBurstIcon
 import com.rajamohan.mindmingle.presentation.common.icon.TelescopeIcon
-import com.rajamohan.mindmingle.presentation.home.component.mobile.avatarGradientFor
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
+import com.rajamohan.mindmingle.presentation.home.component.mobile.DistanceLine
+import com.rajamohan.mindmingle.presentation.home.component.mobile.FilterSheet
+import com.rajamohan.mindmingle.presentation.home.component.mobile.PremiumBadge
 import com.rajamohan.mindmingle.presentation.home.viewmodel.HomeEvent
 import com.rajamohan.mindmingle.presentation.home.viewmodel.HomeViewModel
 import com.rajamohan.mindmingle.presentation.likes.component.desktop.DesktopLikesScreen
@@ -80,8 +87,8 @@ private enum class DesktopNavTab(val label: String) {
 @Composable
 fun DesktopHomeScreen(
     uid: String,
-    userName: String = "Rajamohan Reddy",
-    userEmail: String = "rajamohan.reddy@gmail.com",
+    userName: String = "",
+    userEmail: String = "",
     onLogout: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
@@ -89,6 +96,8 @@ fun DesktopHomeScreen(
     var showPremium by remember { mutableStateOf(false) }
     var showEditProfile by remember { mutableStateOf(false) }
     var showSupportChat by remember { mutableStateOf(false) }
+    var showAccountSettings by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         if (showPremium) {
@@ -100,7 +109,6 @@ fun DesktopHomeScreen(
             DesktopProfileSetupScreen(
                 uid = uid,
                 email = userEmail,
-                phoneNumber = "",
                 isEditMode = true,
                 onBack = { showEditProfile = false },
                 onProfileSaved = { showEditProfile = false }
@@ -113,17 +121,32 @@ fun DesktopHomeScreen(
             return@Surface
         }
 
+        if (showAccountSettings) {
+            AccountSettingsScreen(
+                onBack = { showAccountSettings = false },
+                // Deactivated or deleted — either way the session is already gone.
+                onAccountClosed = {
+                    showAccountSettings = false
+                    onLogout()
+                }
+            )
+            return@Surface
+        }
+
         Row(modifier = Modifier.fillMaxSize()) {
             DesktopSideRail(
                 activeTab = activeTab,
                 onTabSelected = { activeTab = it },
-                onLogout = onLogout,
+                onLogout = { showLogoutConfirm = true },
                 modifier = Modifier.fillMaxHeight()
             )
 
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 when (activeTab) {
-                    DesktopNavTab.Discover -> DesktopDiscoverContent(uid = uid)
+                    DesktopNavTab.Discover -> DesktopDiscoverContent(
+                        uid = uid,
+                        onUpgradeClick = { showPremium = true }
+                    )
                     DesktopNavTab.Likes -> DesktopLikesScreen(uid = uid)
                     DesktopNavTab.Chat -> DesktopChatScreen(uid = uid)
                     DesktopNavTab.Anonymous -> DesktopAnonymousChatScreen(uid = uid)
@@ -134,11 +157,23 @@ fun DesktopHomeScreen(
                         onLogout = onLogout,
                         onUpgradeClick = { showPremium = true },
                         onEditProfileClick = { showEditProfile = true },
-                        onOpenSupportClick = { showSupportChat = true }
+                        onOpenSupportClick = { showSupportChat = true },
+                        onOpenAccountSettingsClick = { showAccountSettings = true }
                     )
                 }
             }
         }
+    }
+
+    // The side rail's Log Out asks first, same as the one on the Profile tab.
+    if (showLogoutConfirm) {
+        LogoutConfirmDialog(
+            onConfirm = {
+                showLogoutConfirm = false
+                onLogout()
+            },
+            onDismiss = { showLogoutConfirm = false }
+        )
     }
 }
 
@@ -215,32 +250,77 @@ private fun DesktopSideRail(
 }
 
 @Composable
-private fun DesktopDiscoverContent(uid: String) {
+private fun DesktopDiscoverContent(uid: String, onUpgradeClick: () -> Unit = {}) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     val viewModel: HomeViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
     var connectedUids by remember { mutableStateOf(setOf<String>()) }
+    var showFilterSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(uid) {
         viewModel.onEvent(HomeEvent.LoadProfiles(uid))
     }
 
-    uiState.matchedUser?.let { matchedUser ->
-        DesktopMatchDialog(matchedUser = matchedUser, onDismiss = { viewModel.onEvent(HomeEvent.DismissMatch) })
+    // The same sheet the phone uses. Desktop had no filters at all, which meant distance, country
+    // and district — the three MindMingle+ filters — were unreachable for anyone on a laptop, and
+    // a paying subscriber could not use what they had paid for. It is a Dialog, so it needs no
+    // desktop-specific layout to be usable at this size.
+    if (showFilterSheet) {
+        FilterSheet(
+            filters = uiState.filters,
+            canFilterByDistance = uiState.hasMyLocation,
+            onLoadDistricts = { countryCode -> viewModel.districtsFor(countryCode) },
+            isPremium = uiState.isPremium,
+            onApply = { newFilters ->
+                viewModel.onEvent(HomeEvent.ApplyFilters(newFilters))
+                showFilterSheet = false
+            },
+            onReset = { viewModel.onEvent(HomeEvent.ResetFilters) },
+            onUpgrade = {
+                showFilterSheet = false
+                onUpgradeClick()
+            },
+            onDismiss = { showFilterSheet = false }
+        )
     }
 
     val visibleProfiles = uiState.profiles.filterNot { connectedUids.contains(it.uid) }
 
     Column(modifier = Modifier.fillMaxSize().safeContentPadding().padding(Spacing.desktopScreenPadding)) {
-        Text(text = "Discover Tech Partners", style = typography.headlineMedium, fontWeight = FontWeight.Bold, color = colors.onBackground)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Browse everyone available right now. Click Connect on who you'd like to work with.",
-            style = typography.bodyMedium,
-            color = colors.onSurfaceVariant
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Discover Tech Partners", style = typography.headlineMedium, fontWeight = FontWeight.Bold, color = colors.onBackground)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Browse everyone available right now. Click Connect on who you'd like to work with.",
+                    style = typography.bodyMedium,
+                    color = colors.onSurfaceVariant
+                )
+            }
+
+            val activeFilterCount = uiState.filters.activeCount
+            Surface(
+                onClick = { showFilterSheet = true },
+                shape = RoundedCornerShape(14.dp),
+                color = if (activeFilterCount > 0) colors.primaryContainer.copy(alpha = 0.6f) else colors.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.height(44.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp)
+                ) {
+                    Text(
+                        text = if (activeFilterCount > 0) "Filters · $activeFilterCount" else "Filters",
+                        style = typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (activeFilterCount > 0) colors.primary else colors.onSurface
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -255,8 +335,8 @@ private fun DesktopDiscoverContent(uid: String) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         TelescopeIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(44.dp))
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(text = "No more tech partners nearby", style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                        Text(text = "Check back later for new profiles", style = typography.bodySmall, color = colors.onSurfaceVariant)
+                        Text(text = "No more developers nearby", style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                        Text(text = "New profiles show up as developers join. Check back a little later.", style = typography.bodySmall, color = colors.onSurfaceVariant)
                     }
                 }
             }
@@ -270,6 +350,7 @@ private fun DesktopDiscoverContent(uid: String) {
                     items(visibleProfiles, key = { it.uid }) { profile ->
                         DesktopDiscoverCard(
                             profile = profile,
+                            distanceKm = uiState.distanceToKm(profile),
                             onConnect = {
                                 connectedUids = connectedUids + profile.uid
                                 viewModel.onEvent(HomeEvent.Connect(fromUid = uid, toUid = profile.uid))
@@ -282,8 +363,18 @@ private fun DesktopDiscoverContent(uid: String) {
     }
 }
 
+/**
+ * Grid card for the desktop Discover wall.
+ *
+ * Same visual language as the mobile deck card — per-uid gradient hero, experience pill, verified
+ * badge, intent pill, interests — at grid scale. A person should look the same on both platforms;
+ * before this the desktop card was a flat header and two lines of text and read as a different app.
+ *
+ * There is no Pass here on purpose: the desktop wall shows every profile at once rather than one
+ * at a time, so there is nothing to advance past. Connecting removes the card from the wall.
+ */
 @Composable
-private fun DesktopDiscoverCard(profile: User, onConnect: () -> Unit) {
+private fun DesktopDiscoverCard(profile: User, distanceKm: Double?, onConnect: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
@@ -291,48 +382,125 @@ private fun DesktopDiscoverCard(profile: User, onConnect: () -> Unit) {
         shape = RoundedCornerShape(24.dp),
         color = colors.surface,
         shadowElevation = 3.dp,
-        modifier = Modifier.height(340.dp)
+        modifier = Modifier.height(392.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(140.dp).background(Brush.linearGradient(avatarGradientFor(profile.uid))),
-                contentAlignment = Alignment.Center
-            ) {
+            // Desktop shows the first photo only: the grid puts several cards on screen at once,
+            // and per-card photo stepping there would be a lot of controls competing for a click.
+            // The whole set is on the profile itself.
+            Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+                RemoteProfileImage(
+                    url = profile.displayPhotoUrls.firstOrNull().orEmpty(),
+                    uid = profile.uid,
+                    contentDescription = profile.name.ifBlank { "Profile photo" },
+                    placeholderIconSize = 48.dp,
+                    modifier = Modifier.fillMaxSize()
+                )
                 Box(
-                    modifier = Modifier.size(72.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f)).border(3.dp, Color.White, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(34.dp))
-                }
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.28f))))
+                )
             }
 
             Column(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
-                Text(text = profile.name, style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                Text(
-                    text = profile.experienceLevel.ifBlank { "Dev" },
-                    style = typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.primary
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = profile.name.ifBlank { "Developer" },
+                        style = typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (profile.isPremium) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        PremiumBadge(size = 15.dp, modifier = Modifier.padding(bottom = 2.dp))
+                    }
+                    if (profile.age > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = profile.age.toString(),
+                            style = typography.bodyMedium,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(7.dp))
+
+                Surface(shape = RoundedCornerShape(50), color = colors.primaryContainer.copy(alpha = 0.7f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        SparkleBurstIcon(color = colors.primary, modifier = Modifier.size(12.dp))
+                        Text(
+                            text = profile.lookingFor.ifBlank { "Open to collaborating" },
+                            style = typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                DistanceLine(
+                    distanceKm = distanceKm,
+                    fallbackLocation = profile.location,
+                    style = typography.bodySmall,
+                    iconSize = 11.dp
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+
+                val metaLines = buildList {
+                    if (profile.occupation.isNotBlank()) add(profile.occupation)
+                }
+                if (metaLines.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = metaLines.joinToString("  ·  "),
+                        style = typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Text(
                     text = profile.bio.ifBlank { "Excited to connect with fellow developers." },
                     style = typography.bodySmall,
                     color = colors.onSurfaceVariant,
                     lineHeight = 16.sp,
-                    maxLines = 2
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (profile.occupation.isNotBlank()) {
-                        Surface(shape = RoundedCornerShape(6.dp), color = colors.primaryContainer.copy(alpha = 0.6f)) {
-                            Text(
-                                text = profile.occupation,
-                                style = typography.labelSmall,
-                                color = colors.primary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            )
+
+                if (profile.interests.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        profile.interests.take(3).forEach { interest ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(1.dp, colors.outline.copy(alpha = 0.25f))
+                            ) {
+                                Text(
+                                    text = interest,
+                                    style = typography.labelSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -352,35 +520,6 @@ private fun DesktopDiscoverCard(profile: User, onConnect: () -> Unit) {
                     ChatBubbleIcon(color = colors.onPrimary, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(text = "Connect", style = typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.onPrimary)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DesktopMatchDialog(matchedUser: User, onDismiss: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val typography = MaterialTheme.typography
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(28.dp), color = colors.surface, shadowElevation = 16.dp, modifier = Modifier.widthIn(max = 420.dp)) {
-            Column(modifier = Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                SparkleBurstIcon(color = colors.primary, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(text = "It's a Match!", style = typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = colors.onSurface)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "You and ${matchedUser.name} both connected. Start the conversation!",
-                    style = typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-                Surface(onClick = onDismiss, shape = RoundedCornerShape(50), color = colors.primary, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Text(text = "Keep Browsing", style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onPrimary)
-                    }
                 }
             }
         }

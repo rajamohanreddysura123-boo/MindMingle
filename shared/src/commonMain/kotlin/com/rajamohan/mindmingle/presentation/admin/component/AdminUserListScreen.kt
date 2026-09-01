@@ -1,6 +1,7 @@
 package com.rajamohan.mindmingle.presentation.admin.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,12 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rajamohan.mindmingle.domain.model.UserCountryResolver
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminUserListViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
@@ -57,7 +60,7 @@ fun AdminUserListScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .widthIn(max = 900.dp)
                 .padding(Spacing.desktopScreenPadding)
         ) {
@@ -109,6 +112,29 @@ fun AdminUserListScreen(
                         inner()
                     }
                 )
+            }
+
+            // Countries come from the loaded pages, so this row only offers filters that can
+            // actually match something. It stays hidden until there is a choice to make.
+            if (uiState.availableCountries.size > 1) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                ) {
+                    CountryChip(
+                        label = "All countries",
+                        selected = uiState.country.isBlank(),
+                        onClick = { viewModel.onCountryChanged("") }
+                    )
+                    uiState.availableCountries.forEach { code ->
+                        CountryChip(
+                            label = UserCountryResolver.label(code, uiState.countries),
+                            selected = uiState.country == code,
+                            onClick = { viewModel.onCountryChanged(code) }
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -171,6 +197,11 @@ fun AdminUserListScreen(
                                             style = typography.bodySmall,
                                             color = colors.onSurfaceVariant
                                         )
+                                        Text(
+                                            text = uiState.countryLabelFor(user.uid),
+                                            style = typography.labelSmall,
+                                            color = colors.onSurfaceVariant
+                                        )
                                     }
 
                                     if (user.isDisabled) {
@@ -190,9 +221,59 @@ fun AdminUserListScreen(
                                 }
                             }
                         }
+
+                        // Users load a page at a time; the search box only covers what is loaded.
+                        if (uiState.hasMore && uiState.query.isBlank()) {
+                            item {
+                                Surface(
+                                    onClick = { viewModel.loadMore() },
+                                    enabled = !uiState.isLoadingMore,
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = colors.surfaceVariant.copy(alpha = 0.4f),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (uiState.isLoadingMore) {
+                                            CircularProgressIndicator(
+                                                color = colors.primary,
+                                                strokeWidth = 2.dp,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "Load more",
+                                                style = typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CountryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val typography = MaterialTheme.typography
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) colors.primary else colors.surfaceVariant.copy(alpha = 0.4f)
+    ) {
+        Text(
+            text = label,
+            style = typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        )
     }
 }

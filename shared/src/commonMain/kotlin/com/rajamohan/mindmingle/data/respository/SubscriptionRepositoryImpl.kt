@@ -1,11 +1,13 @@
 package com.rajamohan.mindmingle.data.respository
 
-import com.rajamohan.mindmingle.data.remote.dto.SavePlanPricingRequestDto
+import com.rajamohan.mindmingle.data.remote.dto.PlanCatalogDto
 import com.rajamohan.mindmingle.data.remote.source.MindMingleFirebaseProvider
 import com.rajamohan.mindmingle.domain.model.BillingHistory
-import com.rajamohan.mindmingle.domain.model.PaymentDetails
+import com.rajamohan.mindmingle.domain.model.CountryCodeRepository
 import com.rajamohan.mindmingle.domain.model.PaymentOrder
 import com.rajamohan.mindmingle.domain.model.PlanCatalog
+import com.rajamohan.mindmingle.domain.model.countryFromPhone
+import com.rajamohan.mindmingle.domain.model.defaultPlanCatalog
 import com.rajamohan.mindmingle.domain.model.PremiumPlan
 import com.rajamohan.mindmingle.domain.model.Subscription
 import com.rajamohan.mindmingle.domain.model.toDomain
@@ -24,9 +26,41 @@ internal class SubscriptionRepositoryImpl(
         const val TAG = "SubscriptionRepository"
     }
 
+    /**
+     * Pricing comes straight out of `appConfig/plans` — no Cloud Function. Every user reads it,
+     * only an admin writes it (firestore.rules). The stored rows win; the shipped
+     * [defaultPlanCatalog] fills in every country the doc has not been given a row for yet, so the
+     * admin screen always lists all 242 markets and a fresh project still shows prices before an
+     * admin has saved anything.
+     *
+     * A failed read falls back to those shipped prices rather than failing the call: the price
+     * list is something every user is meant to be able to see, and the app already carries a copy
+     * of it. Only what an admin has since changed is lost, and just until the read works again.
+     */
     override suspend fun getPlanCatalog(countryHint: String): Result<PlanCatalog> {
         return try {
-            Result.success(mindMingleFirebaseProvider.getPlanPricing(countryHint).toDomain())
+            val dialCodes = dialCodes()
+            val fallback = defaultPlanCatalog(dialCodes)
+
+            val stored = try {
+                mindMingleFirebaseProvider.getPlanCatalog()?.toDomain()
+            } catch (e: Exception) {
+                Napier.w(throwable = e, tag = TAG) { "appConfig/plans unreadable, showing shipped prices" }
+                null
+            }
+
+            val countries = (fallback.countries + stored?.countries.orEmpty())
+                .mapValues { (code, pricing) ->
+                    if (pricing.dialCode.isBlank()) pricing.copy(dialCode = dialCodes[code].orEmpty()) else pricing
+                }
+
+            val catalog = PlanCatalog(
+                enabled = stored?.enabled ?: fallback.enabled,
+                defaultCountry = stored?.defaultCountry?.ifBlank { fallback.defaultCountry } ?: fallback.defaultCountry,
+                countries = countries
+            )
+
+            Result.success(catalog.copy(resolvedCountry = resolveCountry(countryHint, catalog, dialCodes)))
         } catch (e: Exception) {
             Napier.e(throwable = e, tag = TAG) { "getPlanCatalog failed" }
             Result.failure(e)
@@ -35,14 +69,14 @@ internal class SubscriptionRepositoryImpl(
 
     override suspend fun savePlanCatalog(catalog: PlanCatalog): Result<Int> {
         return try {
-            val saved = mindMingleFirebaseProvider.savePlanPricing(
-                SavePlanPricingRequestDto(
+            mindMingleFirebaseProvider.savePlanCatalog(
+                PlanCatalogDto(
                     enabled = catalog.enabled,
                     defaultCountry = catalog.defaultCountry,
                     countries = catalog.countries.mapValues { (_, pricing) -> pricing.toDto() }
                 )
             )
-            Result.success(saved)
+            Result.success(catalog.countries.size)
         } catch (e: Exception) {
             Napier.e(throwable = e, tag = TAG) { "savePlanCatalog failed" }
             Result.failure(e)
@@ -51,11 +85,46 @@ internal class SubscriptionRepositoryImpl(
 
     override suspend fun resetPlanCatalog(): Result<Int> {
         return try {
-            Result.success(mindMingleFirebaseProvider.resetPlanPricing())
+            val catalog = defaultPlanCatalog(dialCodes())
+            mindMingleFirebaseProvider.savePlanCatalog(
+                PlanCatalogDto(
+                    enabled = catalog.enabled,
+                    defaultCountry = catalog.defaultCountry,
+                    countries = catalog.countries.mapValues { (_, pricing) -> pricing.toDto() }
+                )
+            )
+            Result.success(catalog.countries.size)
         } catch (e: Exception) {
             Napier.e(throwable = e, tag = TAG) { "resetPlanCatalog failed" }
             Result.failure(e)
         }
+    }
+
+    private suspend fun dialCodes(): Map<String, String> =
+        CountryCodeRepository.getCountryCodes().associate { it.code to it.dialCode }
+
+    /**
+     * Which market the caller is billed in: an explicit ISO code from the caller, otherwise the
+     * country behind the profile's phone number, otherwise the catalog default.
+     */
+    private suspend fun resolveCountry(
+        countryHint: String,
+        catalog: PlanCatalog,
+        dialCodes: Map<String, String>
+    ): String {
+        val hint = countryHint.trim().uppercase()
+        if (hint.length == 2 && catalog.countries.containsKey(hint)) return hint
+
+        val uid = mindMingleFirebaseProvider.getCurrentUid() ?: return catalog.defaultCountry
+        val phone = try {
+            mindMingleFirebaseProvider.getUserById(uid)?.phoneNumber.orEmpty()
+        } catch (e: Exception) {
+            Napier.w(throwable = e, tag = TAG) { "country lookup failed, using default market" }
+            ""
+        }
+
+        return countryFromPhone(phone, dialCodes)?.takeIf { catalog.countries.containsKey(it) }
+            ?: catalog.defaultCountry
     }
 
     override suspend fun createOrder(plan: PremiumPlan, countryHint: String): Result<PaymentOrder> {
@@ -94,15 +163,6 @@ internal class SubscriptionRepositoryImpl(
         }
     }
 
-    override suspend fun getSubscription(uid: String): Subscription? {
-        return try {
-            mindMingleFirebaseProvider.getSubscription(uid)?.toDomain()
-        } catch (e: Exception) {
-            Napier.w(throwable = e, tag = TAG) { "getSubscription failed" }
-            null
-        }
-    }
-
     override suspend fun getBillingHistory(uid: String): Result<BillingHistory> {
         return try {
             Result.success(mindMingleFirebaseProvider.getBillingHistory(uid).toDomain())
@@ -112,12 +172,13 @@ internal class SubscriptionRepositoryImpl(
         }
     }
 
-    override suspend fun getPaymentDetails(paymentId: String): Result<PaymentDetails> {
-        return try {
-            Result.success(mindMingleFirebaseProvider.getPaymentDetails(paymentId).toDomain())
+    override suspend fun recordPaymentFailure(orderId: String, planId: String, reason: String) {
+        try {
+            mindMingleFirebaseProvider.recordPaymentFailure(orderId, planId, reason)
         } catch (e: Exception) {
-            Napier.e(throwable = e, tag = TAG) { "getPaymentDetails failed" }
-            Result.failure(e)
+            // Best effort only: the user has already been shown the decline, and losing the
+            // record must never turn into a second error on top of the first.
+            Napier.w(throwable = e, tag = TAG) { "recordPaymentFailure failed" }
         }
     }
 

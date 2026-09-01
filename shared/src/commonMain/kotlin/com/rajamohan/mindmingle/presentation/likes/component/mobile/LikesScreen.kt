@@ -1,7 +1,6 @@
 package com.rajamohan.mindmingle.presentation.likes.component.mobile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,12 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,30 +28,34 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
+import com.rajamohan.mindmingle.presentation.home.component.mobile.PremiumBadge
 import com.rajamohan.mindmingle.presentation.common.icon.EnvelopeIcon
+import com.rajamohan.mindmingle.presentation.likes.viewmodel.LikeEntry
+import com.rajamohan.mindmingle.presentation.likes.viewmodel.LikesEvent
 import com.rajamohan.mindmingle.presentation.likes.viewmodel.LikesViewModel
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import org.koin.compose.viewmodel.koinViewModel
 
-private val likeCardPalettes = listOf(
-    listOf(Color(0xFFFF4081), Color(0xFFFF80AB)),
-    listOf(Color(0xFF00C853), Color(0xFFB9F6CA)),
-    listOf(Color(0xFF651FFF), Color(0xFFB388FF)),
-    listOf(Color(0xFFFF6D00), Color(0xFFFFD180))
-)
-
-private fun paletteFor(uid: String): List<Color> =
-    likeCardPalettes[(uid.hashCode().let { if (it < 0) -it else it }) % likeCardPalettes.size]
-
+/**
+ * Who liked this user, split into the two states a like can be in.
+ *
+ * A like arrives as a request and stays one until it is answered. Returning it is what opens the
+ * conversation, so returned likes carry a "Chat" action and the rest carry "Like back" / "Ignore".
+ * Nothing here ever tells the other person they were turned down.
+ *
+ * [onOpenChat] hands the other user's uid to the host so it can switch to the Chat tab.
+ */
 @Composable
-fun LikesScreen(uid: String) {
+fun LikesScreen(
+    uid: String,
+    onOpenChat: (otherUid: String) -> Unit = {}
+) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
@@ -72,7 +73,7 @@ fun LikesScreen(uid: String) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .padding(horizontal = Spacing.screenHorizontal, vertical = Spacing.screenVertical)
         ) {
             Row(
@@ -83,7 +84,7 @@ fun LikesScreen(uid: String) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Likes & Matches",
+                    text = "Likes",
                     style = typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = colors.onBackground
@@ -94,7 +95,7 @@ fun LikesScreen(uid: String) {
                     color = colors.primaryContainer.copy(alpha = 0.6f)
                 ) {
                     Text(
-                        text = "${uiState.likedByUsers.size} New",
+                        text = "${uiState.totalCount}",
                         style = typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = colors.primary,
@@ -111,7 +112,8 @@ fun LikesScreen(uid: String) {
                         CircularProgressIndicator(color = colors.primary)
                     }
                 }
-                uiState.likedByUsers.isEmpty() -> {
+
+                uiState.entries.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             EnvelopeIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(40.dp))
@@ -130,74 +132,145 @@ fun LikesScreen(uid: String) {
                         }
                     }
                 }
+
                 else -> {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(uiState.likedByUsers) { item ->
-                            Surface(
-                                shape = RoundedCornerShape(22.dp),
-                                color = colors.surface,
-                                shadowElevation = 4.dp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(200.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(110.dp)
-                                            .background(Brush.linearGradient(paletteFor(item.uid))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(42.dp))
+                        if (uiState.pending.isNotEmpty()) {
+                            item(key = "header_pending") {
+                                SectionHeader(text = "Waiting for your answer")
+                            }
+                            items(uiState.pending, key = { "pending_${it.user.uid}" }) { entry ->
+                                LikeRow(
+                                    entry = entry,
+                                    onLikeBack = { viewModel.onEvent(LikesEvent.LikeBack(entry.user.uid)) },
+                                    onIgnore = { viewModel.onEvent(LikesEvent.Ignore(entry.user.uid)) },
+                                    onOpenChat = { onOpenChat(entry.user.uid) }
+                                )
+                            }
+                        }
 
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(8.dp)
-                                        ) {
-                                            Text(
-                                                text = item.experienceLevel.ifBlank { "Dev" },
-                                                color = Color.White,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp)
-                                    ) {
-                                        Text(
-                                            text = item.name,
-                                            style = typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.onSurface
-                                        )
-                                        Text(
-                                            text = item.occupation,
-                                            style = typography.bodySmall,
-                                            color = colors.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                        if (uiState.connected.isNotEmpty()) {
+                            item(key = "header_connected") {
+                                SectionHeader(text = "You liked back")
+                            }
+                            items(uiState.connected, key = { "connected_${it.user.uid}" }) { entry ->
+                                LikeRow(
+                                    entry = entry,
+                                    onLikeBack = {},
+                                    onIgnore = {},
+                                    onOpenChat = { onOpenChat(entry.user.uid) }
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+    )
+}
+
+@Composable
+private fun LikeRow(
+    entry: LikeEntry,
+    onLikeBack: () -> Unit,
+    onIgnore: () -> Unit,
+    onOpenChat: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val typography = MaterialTheme.typography
+    val user = entry.user
+
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = colors.surface,
+        shadowElevation = 3.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RemoteProfileImage(
+                url = user.displayPhotoUrls.firstOrNull().orEmpty(),
+                uid = user.uid,
+                contentDescription = user.name.ifBlank { "Profile photo" },
+                placeholderIconSize = 26.dp,
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(CircleShape)
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = user.name.ifBlank { "Unknown user" },
+                        style = typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (user.isPremium) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        PremiumBadge(size = 15.dp)
+                    }
+                }
+                Text(
+                    text = listOf(user.occupation, user.experienceLevel)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · "),
+                    style = typography.bodySmall,
+                    color = colors.onSurfaceVariant
+                )
+            }
+
+            if (entry.isConnected) {
+                ActionPill(label = "Chat", isPrimary = true, onClick = onOpenChat)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionPill(label = "Ignore", isPrimary = false, onClick = onIgnore)
+                    ActionPill(label = "Like back", isPrimary = true, onClick = onLikeBack)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionPill(label: String, isPrimary: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (isPrimary) colors.primary else colors.surfaceVariant,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isPrimary) colors.onPrimary else colors.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        )
     }
 }

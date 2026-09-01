@@ -13,7 +13,6 @@ data class DeviceTokenDto(
 data class NotificationPrefsDto(
     val messages: Boolean = true,
     val likes: Boolean = true,
-    val matches: Boolean = true,
     val payments: Boolean = true,
     val support: Boolean = true
 )

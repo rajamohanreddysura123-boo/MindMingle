@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -59,7 +59,7 @@ fun AdminPlanPricingScreen(onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .widthIn(max = 900.dp)
                 .padding(Spacing.desktopScreenPadding)
         ) {
@@ -231,9 +231,13 @@ private fun PricingRowCard(
                     color = colors.onSurface
                 )
                 Text(
-                    text = if (isDefaultMarket) "${row.currency} · default" else row.currency,
+                    text = when {
+                        isDefaultMarket -> "${row.currency} · default"
+                        row.isUnpriced -> "${row.currency} · not set"
+                        else -> row.currency
+                    },
                     style = typography.bodySmall,
-                    color = colors.onSurfaceVariant
+                    color = if (row.isUnpriced && !isDefaultMarket) colors.tertiary else colors.onSurfaceVariant
                 )
             }
 
@@ -241,7 +245,7 @@ private fun PricingRowCard(
                 label = "Monthly",
                 value = row.monthlyInput,
                 symbol = row.symbol,
-                isValid = (row.monthlyMinor ?: 0L) > 0L,
+                isValid = row.isUnpriced || (row.monthlyMinor ?: 0L) > 0L,
                 onValueChange = onMonthlyChanged,
                 modifier = Modifier.weight(1f)
             )
@@ -250,7 +254,7 @@ private fun PricingRowCard(
                 label = "Annual",
                 value = row.annualInput,
                 symbol = row.symbol,
-                isValid = (row.annualMinor ?: 0L) > 0L,
+                isValid = row.isUnpriced || (row.annualMinor ?: 0L) > 0L,
                 onValueChange = onAnnualChanged,
                 modifier = Modifier.weight(1f)
             )

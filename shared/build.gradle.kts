@@ -52,6 +52,10 @@ kotlin {
             implementation(libs.compose.uiTooling)
             implementation(libs.koin.android)
             implementation(libs.play.services.auth)
+            // Google Play In-App Updates (InAppUpdateManager.android.kt). Android-only artifact —
+            // iOS has no equivalent (the App Store has no in-app update API) and desktop is
+            // distributed outside any store, so both those targets have no update gate at all.
+            implementation(libs.play.app.update)
             implementation(libs.firebase.messaging)
             // Google Mobile Ads (AdMob). Android-only artifact — iOS goes through
             // IosAdHost/AdMobBridge.swift, desktop has no SDK at all.
@@ -64,6 +68,15 @@ kotlin {
             // IosPaymentHost/RazorpayBridge.swift, desktop has no SDK at all.
             api(libs.razorpay.checkout)
             api(libs.razorpay.standardCore)
+            // Coil's network layer, one HTTP engine per target — ktor picks whichever is on the
+            // classpath, so no engine is ever named in common code.
+            implementation(libs.ktor.client.okhttp)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+        }
+        jvmMain.dependencies {
+            implementation(libs.ktor.client.cio)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -83,6 +96,8 @@ kotlin {
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.napier)
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor3)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

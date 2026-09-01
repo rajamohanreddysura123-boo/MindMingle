@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.rajamohan.mindmingle.presentation.admin.component.AdminDashboardScreen
+import com.rajamohan.mindmingle.presentation.admin.component.AdminDeletionRequestsScreen
 import com.rajamohan.mindmingle.presentation.admin.component.AdminPlanPricingScreen
+import com.rajamohan.mindmingle.presentation.admin.component.AdminSubscriberListScreen
 import com.rajamohan.mindmingle.presentation.admin.component.AdminSupportChatScreen
 import com.rajamohan.mindmingle.presentation.admin.component.AdminSupportListScreen
 import com.rajamohan.mindmingle.presentation.admin.component.AdminUserDetailScreen
@@ -16,8 +18,10 @@ private sealed class AdminScreenState {
     data object Dashboard : AdminScreenState()
     data object UserList : AdminScreenState()
     data object PlanPricing : AdminScreenState()
+    data object Subscribers : AdminScreenState()
     data class UserDetail(val uid: String) : AdminScreenState()
     data object SupportList : AdminScreenState()
+    data object DeletionRequests : AdminScreenState()
     data class SupportChat(val uid: String, val userName: String) : AdminScreenState()
 }
 
@@ -35,9 +39,14 @@ fun AdminEntryPoint(onSignOut: () -> Unit) {
             AdminDashboardScreen(
                 onManageUsers = { currentScreen = AdminScreenState.UserList },
                 onManagePricing = { currentScreen = AdminScreenState.PlanPricing },
+                onManageSubscribers = { currentScreen = AdminScreenState.Subscribers },
                 onManageSupport = { currentScreen = AdminScreenState.SupportList },
+                onManageDeletionRequests = { currentScreen = AdminScreenState.DeletionRequests },
                 onSignOut = onSignOut
             )
+        }
+        AdminScreenState.DeletionRequests -> {
+            AdminDeletionRequestsScreen(onBack = { currentScreen = AdminScreenState.Dashboard })
         }
         AdminScreenState.SupportList -> {
             AdminSupportListScreen(
@@ -50,6 +59,14 @@ fun AdminEntryPoint(onSignOut: () -> Unit) {
                 uid = screen.uid,
                 userName = screen.userName,
                 onBack = { currentScreen = AdminScreenState.SupportList }
+            )
+        }
+        AdminScreenState.Subscribers -> {
+            AdminSubscriberListScreen(
+                // A subscriber row opens the same detail screen as a user row: the plan
+                // controls and order history an admin wants next already live there.
+                onSubscriberClick = { uid -> currentScreen = AdminScreenState.UserDetail(uid) },
+                onBack = { currentScreen = AdminScreenState.Dashboard }
             )
         }
         AdminScreenState.PlanPricing -> {

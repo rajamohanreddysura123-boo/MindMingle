@@ -4,6 +4,7 @@ import com.rajamohan.mindmingle.data.remote.dto.AnonymousAuditDto
 import com.rajamohan.mindmingle.data.remote.dto.AnonymousQueueDto
 import com.rajamohan.mindmingle.data.remote.dto.AnonymousRelayDto
 import com.rajamohan.mindmingle.data.remote.dto.AnonymousSessionDto
+import com.rajamohan.mindmingle.domain.model.nowMillis
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.firestore.ServerTimestampBehavior
 import dev.gitlive.firebase.firestore.Timestamp
@@ -18,9 +19,28 @@ internal class AnonymousChatRemoteSource {
         const val SESSIONS = "anonymousSessions"
         const val RELAY = "relay"
         const val AUDIT = "anonymousAuditLog"
+
+        /**
+         * Waiting slots to read when looking for a partner. Only one of them is needed, and the
+         * rest are tried in order when a claim loses the race — reading the whole queue would make
+         * every pairing attempt cost one read per person waiting.
+         */
+        const val QUEUE_SCAN_LIMIT = 20
+
+        /** A waiting slot nobody claimed is swept after this long. */
+        const val QUEUE_TTL_MILLIS = 60L * 60L * 1000L
+
+        /** Backstop lifetime for a room, and for anything relayed inside it, if no client purges. */
+        const val SESSION_TTL_MILLIS = 12L * 60L * 60L * 1000L
+        const val RELAY_TTL_MILLIS = 60L * 60L * 1000L
     }
 
     private val firestore get() = Firebase.firestore
+
+    private fun expiryAfter(millis: Long): Timestamp {
+        val expiresAtMillis = nowMillis() + millis
+        return Timestamp(seconds = expiresAtMillis / 1000L, nanoseconds = 0)
+    }
 
     fun newSessionId(): String {
         val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -28,17 +48,25 @@ internal class AnonymousChatRemoteSource {
     }
 
     suspend fun enqueue(uid: String) {
-        firestore.collection(QUEUE).document(uid).set(AnonymousQueueDto(uid = uid))
+        firestore.collection(QUEUE).document(uid).set(
+            AnonymousQueueDto(uid = uid, expiresAt = expiryAfter(QUEUE_TTL_MILLIS))
+        )
     }
 
+    /**
+     * The oldest unclaimed slots, longest wait first. Ordered and capped server-side: the caller
+     * only needs one partner, and walks the rest only when a claim loses the compare-and-set race
+     * in firestore.rules.
+     */
     suspend fun waitingUids(uid: String): List<String> {
         return firestore.collection(QUEUE)
             .where { "sessionId" equalTo "" }
+            .orderBy("joinedAt")
+            .limit(QUEUE_SCAN_LIMIT)
             .get()
             .documents
             .map { it.data<AnonymousQueueDto>() }
             .filter { it.uid.isNotEmpty() && it.uid != uid }
-            .sortedBy { (it.joinedAt as? Timestamp)?.seconds ?: 0L }
             .map { it.uid }
     }
 
@@ -46,7 +74,8 @@ internal class AnonymousChatRemoteSource {
         firestore.collection(SESSIONS).document(sessionId).set(
             AnonymousSessionDto(
                 participants = listOf(selfUid, peerUid),
-                openedBy = selfUid
+                openedBy = selfUid,
+                expiresAt = expiryAfter(SESSION_TTL_MILLIS)
             )
         )
     }
@@ -101,7 +130,13 @@ internal class AnonymousChatRemoteSource {
 
     suspend fun pushRelay(sessionId: String, senderId: String, text: String) {
         firestore.collection(SESSIONS).document(sessionId).collection(RELAY)
-            .add(AnonymousRelayDto(senderId = senderId, text = text))
+            .add(
+                AnonymousRelayDto(
+                    senderId = senderId,
+                    text = text,
+                    expiresAt = expiryAfter(RELAY_TTL_MILLIS)
+                )
+            )
     }
 
     suspend fun deleteRelay(sessionId: String, messageId: String) {

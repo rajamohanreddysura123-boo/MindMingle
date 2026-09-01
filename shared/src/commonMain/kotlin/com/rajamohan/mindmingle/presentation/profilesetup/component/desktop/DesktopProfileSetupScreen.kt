@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
 import com.rajamohan.mindmingle.presentation.home.component.mobile.avatarGradientFor
@@ -68,7 +69,6 @@ import org.koin.compose.viewmodel.koinViewModel
 fun DesktopProfileSetupScreen(
     uid: String,
     email: String,
-    phoneNumber: String,
     prefillName: String = "",
     isEditMode: Boolean = false,
     onBack: () -> Unit = {},
@@ -83,7 +83,6 @@ fun DesktopProfileSetupScreen(
         viewModel.onEvent(ProfileSetupEvent.LoadExisting(uid))
         if (!isEditMode) {
             if (prefillName.isNotBlank()) viewModel.onEvent(ProfileSetupEvent.NameChanged(prefillName))
-            if (phoneNumber.isNotBlank()) viewModel.onEvent(ProfileSetupEvent.PrefillPhone(phoneNumber))
             viewModel.onEvent(ProfileSetupEvent.DetectLocation)
         }
     }
@@ -157,6 +156,14 @@ fun DesktopProfileSetupScreen(
                         Text(text = uiState.error, style = typography.bodySmall, color = colors.error)
                     }
 
+                    // Why Next is greyed out. The required fields are often scrolled off the top
+                    // by the time someone reaches the button.
+                    val missingHint = uiState.missingHintFor(uiState.currentStep)
+                    if (missingHint.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = missingHint, style = typography.bodySmall, color = colors.onSurfaceVariant)
+                    }
+
                     Spacer(modifier = Modifier.height(20.dp))
 
                     WizardNavRow(
@@ -225,7 +232,7 @@ private fun DesktopPhotosStep(uiState: ProfileSetupUiState, viewModel: ProfileSe
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    DesktopStepHeading(title = "Add Your Photos", subtitle = "At least one photo is required — up to 5. Each one must clearly show your face.")
+    DesktopStepHeading(title = "Add Your Photos", subtitle = "At least one photo is required — up to $MAX_PROFILE_PHOTOS. Each one must clearly show your face.")
     Spacer(modifier = Modifier.height(20.dp))
     PhotoPickerRow(
         photos = uiState.photos,

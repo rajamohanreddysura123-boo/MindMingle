@@ -2,10 +2,13 @@ package com.rajamohan.mindmingle.presentation.profilesetup.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rajamohan.mindmingle.core.location.DeviceLocation
+import com.rajamohan.mindmingle.core.location.DeviceLocationResult
 import com.rajamohan.mindmingle.core.location.LocationService
+import com.rajamohan.mindmingle.core.location.PlaceNames
 import com.rajamohan.mindmingle.core.media.FaceDetector
 import com.rajamohan.mindmingle.core.media.ImagePicker
-import com.rajamohan.mindmingle.domain.model.CountryCode
+import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.domain.model.CountryCodeRepository
 import com.rajamohan.mindmingle.domain.model.OccupationRepository
 import com.rajamohan.mindmingle.domain.model.PhoneNumberRules
@@ -37,6 +40,13 @@ internal class ProfileSetupViewModel(
     /** Fields on the existing doc that this form never edits — preserved across a save so an edit never wipes them. */
     private var preservedAvatarUrl: String = ""
     private var preservedIsDisabled: Boolean = false
+    // Account-state flags are never edited here, but saveUser writes the whole doc — dropping
+    // them would silently end a deactivation or a filed deletion request.
+    private var preservedIsDeactivated: Boolean = false
+    private var preservedDeactivatedAt: Long = 0L
+    private var preservedReactivateAt: Long = 0L
+    private var preservedIsDeletionRequested: Boolean = false
+    private var preservedDeletionRequestedAt: Long = 0L
     private var preservedCreatedAt: Long = 0L
     private var pendingUid: String = ""
 
@@ -70,13 +80,6 @@ internal class ProfileSetupViewModel(
             is ProfileSetupEvent.CountryCodeSelected -> _uiState.update { state ->
                 val maxLen = PhoneNumberRules.expectedLength(event.country.code).last
                 state.copy(selectedCountry = event.country, phone = state.phone.take(maxLen), error = "")
-            }
-            is ProfileSetupEvent.PrefillPhone -> {
-                viewModelScope.launch {
-                    val countries = _uiState.value.countryCodes.ifEmpty { CountryCodeRepository.getCountryCodes() }
-                    val (country, digits) = PhoneNumberRules.parse(event.rawPhoneNumber, countries)
-                    _uiState.update { it.copy(selectedCountry = country, phone = digits, error = "") }
-                }
             }
             is ProfileSetupEvent.BioChanged -> _uiState.update { it.copy(bio = event.bio) }
             is ProfileSetupEvent.OccupationQueryChanged -> _uiState.update { it.copy(occupationQuery = event.query) }
@@ -159,6 +162,11 @@ internal class ProfileSetupViewModel(
             if (user != null) {
                 preservedAvatarUrl = user.avatarUrl
                 preservedIsDisabled = user.isDisabled
+                preservedIsDeactivated = user.isDeactivated
+                preservedDeactivatedAt = user.deactivatedAt
+                preservedReactivateAt = user.reactivateAt
+                preservedIsDeletionRequested = user.isDeletionRequested
+                preservedDeletionRequestedAt = user.deletionRequestedAt
                 preservedCreatedAt = user.createdAt
                 val links = (listOf(user.githubUrl) + user.portfolioLinks).filter { it.isNotBlank() }
                 val countries = _uiState.value.countryCodes.ifEmpty { CountryCodeRepository.getCountryCodes() }
@@ -181,6 +189,9 @@ internal class ProfileSetupViewModel(
                         portfolioLinks = links.ifEmpty { listOf("") },
                         location = user.location,
                         latitude = user.latitude,
+                        countryCode = user.countryCode,
+                        region = user.region,
+                        district = user.district,
                         longitude = user.longitude,
                         photos = user.photoUrls.map { url -> ProfilePhoto(url = url) }
                     )
@@ -191,18 +202,59 @@ internal class ProfileSetupViewModel(
         }
     }
 
+    /** Coordinates from the last device read, so the state update below can use them. */
+    private var deviceCoordinates: Pair<Double, Double>? = null
+
+    /**
+     * One device fix with its names, or null when the device cannot or will not say — a refusal,
+     * a disabled GPS, desktop. The caller falls back to the IP lookup, which is what this screen
+     * used before the device path existed.
+     */
+    private suspend fun deviceLocationOrNull(): PlaceNames? {
+        deviceCoordinates = null
+        if (!DeviceLocation.isSupported) return null
+
+        return when (val result = DeviceLocation.current()) {
+            is DeviceLocationResult.Located -> {
+                deviceCoordinates = result.latitude to result.longitude
+                result.place
+            }
+            else -> {
+                Napier.d(tag = TAG) { "device location unavailable during setup: $result" }
+                null
+            }
+        }
+    }
+
     private fun detectLocation() {
         _uiState.update { it.copy(isDetectingLocation = true, locationError = "") }
         viewModelScope.launch {
-            val result = LocationService.getCurrentLocation()
-            val display = result?.displayString?.takeIf { it.isNotBlank() }
+            // The device first, exactly as the Home refresh does it. It is the only source that
+            // can name a district — an IP address resolves to a city at best — and setup is where
+            // a profile is complete enough to be discovered, so it is worth asking here rather
+            // than leaving the first Home open to fill it in.
+            val place = deviceLocationOrNull()
+            val byIp = if (place == null || place.isEmpty) LocationService.getCurrentLocation() else null
+
+            val display = place?.displayString?.takeIf { it.isNotBlank() }
+                ?: byIp?.displayString?.takeIf { it.isNotBlank() }
+            // Resolved out here: the lookups suspend and the state update below does not.
+            val countryCode = place?.countryCode?.takeIf { it.isNotBlank() }
+                ?: byIp?.country?.let { CountryCodeRepository.codeForName(it) }.orEmpty()
+            val region = place?.region?.takeIf { it.isNotBlank() } ?: byIp?.region.orEmpty()
+            val district = place?.district.orEmpty()
+            val latitude = deviceCoordinates?.first ?: byIp?.latitude
+            val longitude = deviceCoordinates?.second ?: byIp?.longitude
             _uiState.update {
                 if (display != null) {
                     it.copy(
                         isDetectingLocation = false,
                         location = display,
-                        latitude = result.latitude,
-                        longitude = result.longitude,
+                        latitude = latitude,
+                        longitude = longitude,
+                        countryCode = countryCode,
+                        region = region,
+                        district = district,
                         locationError = ""
                     )
                 } else {
@@ -216,8 +268,17 @@ internal class ProfileSetupViewModel(
     }
 
     private fun pickPhotos() {
-        val remaining = 5 - _uiState.value.photos.size
-        if (remaining <= 0 || pendingUid.isBlank()) return
+        if (pendingUid.isBlank()) return
+
+        val remaining = MAX_PROFILE_PHOTOS - _uiState.value.photos.size
+        if (remaining <= 0) {
+            // The add tile is hidden at the limit, so this is only reachable by a double tap
+            // landing after the last upload finished. Saying so beats a dead button.
+            _uiState.update {
+                it.copy(error = "You can add up to $MAX_PROFILE_PHOTOS photos — remove one to add another")
+            }
+            return
+        }
 
         // Picking again is the user's answer to whatever the last attempt complained about —
         // drop the stale message now so a good photo doesn't land under an old face error.
@@ -230,9 +291,14 @@ internal class ProfileSetupViewModel(
                     return@launch
                 }
 
+                // Belt and braces on the limit: the system picker is asked for at most `remaining`
+                // and every implementation truncates, but a platform picker that ignored the count
+                // would otherwise push the profile over five.
+                val picked = pickedBytesList.take(remaining)
+
                 // Only photos with a detectable face are allowed on a profile (FaceDetector.android.kt).
-                val withFace = pickedBytesList.filter { FaceDetector.containsFace(it) }
-                val rejectedCount = pickedBytesList.size - withFace.size
+                val withFace = picked.filter { FaceDetector.containsFace(it) }
+                val rejectedCount = picked.size - withFace.size
 
                 _uiState.update {
                     it.copy(
@@ -326,10 +392,18 @@ internal class ProfileSetupViewModel(
                 portfolioLinks = links.drop(1),
                 age = state.ageValue ?: 0,
                 location = state.location,
+                countryCode = state.countryCode,
+                region = state.region,
+                district = state.district,
                 latitude = state.latitude,
                 longitude = state.longitude,
                 isProfileComplete = true,
                 isDisabled = preservedIsDisabled,
+                isDeactivated = preservedIsDeactivated,
+                deactivatedAt = preservedDeactivatedAt,
+                reactivateAt = preservedReactivateAt,
+                isDeletionRequested = preservedIsDeletionRequested,
+                deletionRequestedAt = preservedDeletionRequestedAt,
                 createdAt = preservedCreatedAt
             )
 

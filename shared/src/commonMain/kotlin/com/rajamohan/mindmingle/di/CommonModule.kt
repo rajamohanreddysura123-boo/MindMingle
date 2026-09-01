@@ -29,16 +29,27 @@ import com.rajamohan.mindmingle.domain.repository.MindMingleRemoteRepository
 import com.rajamohan.mindmingle.domain.repository.SubscriptionRepository
 import com.rajamohan.mindmingle.domain.usecase.AdminCancelSubscriptionUseCase
 import com.rajamohan.mindmingle.domain.usecase.AdminSetSubscriptionUseCase
-import com.rajamohan.mindmingle.domain.usecase.CheckAccountStatusUseCase
-import com.rajamohan.mindmingle.domain.usecase.DeleteMyAccountUseCase
+import com.rajamohan.mindmingle.domain.usecase.DeactivateMyAccountUseCase
+import com.rajamohan.mindmingle.domain.usecase.ListDeletionRequestsUseCase
+import com.rajamohan.mindmingle.domain.usecase.RequestAccountDeletionUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetBillingHistoryUseCase
-import com.rajamohan.mindmingle.domain.usecase.GetPaymentDetailsUseCase
 import com.rajamohan.mindmingle.domain.usecase.CreatePaymentOrderUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetPlanCatalogUseCase
 import com.rajamohan.mindmingle.domain.usecase.ResetPlanCatalogUseCase
 import com.rajamohan.mindmingle.domain.usecase.SavePlanCatalogUseCase
-import com.rajamohan.mindmingle.domain.usecase.GetSubscriptionUseCase
+import com.rajamohan.mindmingle.data.respository.PushRepositoryImpl
+import com.rajamohan.mindmingle.domain.repository.PushRepository
+import com.rajamohan.mindmingle.domain.usecase.GetNotificationPrefsUseCase
+import com.rajamohan.mindmingle.domain.usecase.ObserveIncomingLikeAlertsUseCase
+import com.rajamohan.mindmingle.domain.usecase.ObserveMessageAlertsUseCase
+import com.rajamohan.mindmingle.domain.usecase.RegisterPushDeviceUseCase
+import com.rajamohan.mindmingle.domain.usecase.SaveNotificationPrefsUseCase
+import com.rajamohan.mindmingle.domain.usecase.UnregisterPushDeviceUseCase
 import com.rajamohan.mindmingle.domain.usecase.ObserveSubscriptionUseCase
+import com.rajamohan.mindmingle.domain.usecase.RefreshMyLocationUseCase
+import com.rajamohan.mindmingle.domain.usecase.GetSubscriberStatsUseCase
+import com.rajamohan.mindmingle.domain.usecase.ListSubscribersUseCase
+import com.rajamohan.mindmingle.domain.usecase.RecordPaymentFailureUseCase
 import com.rajamohan.mindmingle.domain.usecase.VerifyPaymentUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetPendingAnonymousMessagesUseCase
 import com.rajamohan.mindmingle.domain.usecase.LeaveAnonymousChatUseCase
@@ -49,13 +60,18 @@ import com.rajamohan.mindmingle.domain.usecase.PurgeSeenAnonymousMessagesUseCase
 import com.rajamohan.mindmingle.domain.usecase.SendAnonymousMessageUseCase
 import com.rajamohan.mindmingle.domain.usecase.SkipAnonymousPartnerUseCase
 import com.rajamohan.mindmingle.domain.usecase.StartAnonymousChatUseCase
-import com.rajamohan.mindmingle.domain.usecase.CheckIsAdminUseCase
 import com.rajamohan.mindmingle.domain.usecase.DeleteUserCascadeUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetAdConfigUseCase
+import com.rajamohan.mindmingle.domain.usecase.GetAppUpdateConfigUseCase
+import com.rajamohan.mindmingle.domain.usecase.GetSentLikeUidsUseCase
+import com.rajamohan.mindmingle.domain.usecase.IgnoreIncomingLikeUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetAdminStatsUseCase
+import com.rajamohan.mindmingle.domain.usecase.DeleteSeenMessagesUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetConversationsUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetDiscoverProfilesUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetIncomingLikesUseCase
+import com.rajamohan.mindmingle.domain.usecase.GetAdminAreasUseCase
+import com.rajamohan.mindmingle.domain.usecase.GetProfileStatsUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetUserProfileUseCase
 import com.rajamohan.mindmingle.domain.usecase.LikeUserUseCase
 import com.rajamohan.mindmingle.domain.usecase.ListAllUsersUseCase
@@ -65,18 +81,21 @@ import com.rajamohan.mindmingle.domain.usecase.ObserveSupportMessagesUseCase
 import com.rajamohan.mindmingle.domain.usecase.ObserveSupportThreadsUseCase
 import com.rajamohan.mindmingle.domain.usecase.SendMessageUseCase
 import com.rajamohan.mindmingle.domain.usecase.SendSupportMessageUseCase
-import com.rajamohan.mindmingle.domain.usecase.SendOtpUseCase
+import com.rajamohan.mindmingle.domain.usecase.SetPremiumFlagUseCase
 import com.rajamohan.mindmingle.domain.usecase.SetUserDisabledUseCase
 import com.rajamohan.mindmingle.domain.usecase.UnbanUserUseCase
-import com.rajamohan.mindmingle.domain.usecase.VerifyOtpUseCase
+import com.rajamohan.mindmingle.presentation.account.viewmodel.AccountSettingsViewModel
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminDashboardViewModel
+import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminDeletionRequestsViewModel
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminPlanPricingViewModel
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminUserDetailViewModel
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminSupportListViewModel
+import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminSubscriberListViewModel
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminUserListViewModel
 import com.rajamohan.mindmingle.presentation.anonymous.viewmodel.AnonymousChatViewModel
 import com.rajamohan.mindmingle.presentation.chat.viewmodel.ChatViewModel
 import com.rajamohan.mindmingle.presentation.home.viewmodel.HomeViewModel
+import com.rajamohan.mindmingle.presentation.notifications.AlertsViewModel
 import com.rajamohan.mindmingle.presentation.likes.viewmodel.LikesViewModel
 import com.rajamohan.mindmingle.presentation.login.viewmodel.AuthViewModel
 import com.rajamohan.mindmingle.presentation.premium.viewmodel.PremiumViewModel
@@ -120,6 +139,14 @@ val dataModule = module {
 }
 
 val domainModule = module {
+    // Push was scaffolded but never bound: nothing in the graph could build a PushRepository, so
+    // no device token was ever registered and no notification preference was ever read.
+    single<PushRepository> {
+        PushRepositoryImpl(
+            mindMingleFirebaseProvider = get()
+        )
+    }
+
     single<MindMingleRemoteRepository> {
         MindMingleRemoteRepositoryImpl(
             mindMingleFirebaseProvider = get()
@@ -157,18 +184,6 @@ val domainModule = module {
     }
 
     factory {
-        SendOtpUseCase(
-            repository = get()
-        )
-    }
-
-    factory {
-        VerifyOtpUseCase(
-            repository = get()
-        )
-    }
-
-    factory {
         GetDiscoverProfilesUseCase(
             repository = get()
         )
@@ -176,6 +191,24 @@ val domainModule = module {
 
     factory {
         GetAdConfigUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        GetAppUpdateConfigUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        GetSentLikeUidsUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        IgnoreIncomingLikeUseCase(
             repository = get()
         )
     }
@@ -205,12 +238,6 @@ val domainModule = module {
     }
 
     factory {
-        GetPaymentDetailsUseCase(
-            repository = get()
-        )
-    }
-
-    factory {
         AdminSetSubscriptionUseCase(
             repository = get()
         )
@@ -223,7 +250,19 @@ val domainModule = module {
     }
 
     factory {
-        DeleteMyAccountUseCase(
+        RequestAccountDeletionUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        DeactivateMyAccountUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        ListDeletionRequestsUseCase(
             repository = get()
         )
     }
@@ -247,7 +286,7 @@ val domainModule = module {
     }
 
     factory {
-        GetSubscriptionUseCase(
+        RecordPaymentFailureUseCase(
             repository = get()
         )
     }
@@ -266,6 +305,64 @@ val domainModule = module {
 
     factory {
         GetUserProfileUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        SetPremiumFlagUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        GetProfileStatsUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        RefreshMyLocationUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        GetAdminAreasUseCase()
+    }
+
+    factory {
+        ObserveIncomingLikeAlertsUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        ObserveMessageAlertsUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        RegisterPushDeviceUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        UnregisterPushDeviceUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        GetNotificationPrefsUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        SaveNotificationPrefsUseCase(
             repository = get()
         )
     }
@@ -295,6 +392,12 @@ val domainModule = module {
     }
 
     factory {
+        DeleteSeenMessagesUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
         ObserveSupportMessagesUseCase(
             repository = get()
         )
@@ -313,19 +416,19 @@ val domainModule = module {
     }
 
     factory {
-        CheckAccountStatusUseCase(
-            repository = get()
-        )
-    }
-
-    factory {
-        CheckIsAdminUseCase(
-            repository = get()
-        )
-    }
-
-    factory {
         ListAllUsersUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        ListSubscribersUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
+        GetSubscriberStatsUseCase(
             repository = get()
         )
     }
@@ -417,7 +520,7 @@ val presentationModule = module {
         AuthViewModel(
             mindMingleLocalRepository = get(),
             mindMingleRemoteRepository = get(),
-            checkIsAdminUseCase = get()
+            unregisterPushDeviceUseCase = get()
         )
     }
 
@@ -429,12 +532,25 @@ val presentationModule = module {
     }
 
     factory {
+        AlertsViewModel(
+            observeIncomingLikeAlertsUseCase = get(),
+            observeMessageAlertsUseCase = get(),
+            getNotificationPrefsUseCase = get(),
+            registerPushDeviceUseCase = get(),
+            mindMingleLocalRepository = get()
+        )
+    }
+
+    factory {
         HomeViewModel(
             getDiscoverProfilesUseCase = get(),
             likeUserUseCase = get(),
             getUserProfileUseCase = get(),
             getAdConfigUseCase = get(),
             observeSubscriptionUseCase = get(),
+            setPremiumFlagUseCase = get(),
+            refreshMyLocationUseCase = get(),
+            getAdminAreasUseCase = get(),
             mindMingleLocalRepository = get()
         )
     }
@@ -443,6 +559,7 @@ val presentationModule = module {
         PremiumViewModel(
             createPaymentOrderUseCase = get(),
             verifyPaymentUseCase = get(),
+            recordPaymentFailureUseCase = get(),
             observeSubscriptionUseCase = get(),
             getPlanCatalogUseCase = get(),
             getUserProfileUseCase = get()
@@ -459,7 +576,10 @@ val presentationModule = module {
 
     factory {
         LikesViewModel(
-            observeIncomingLikesUseCase = get()
+            observeIncomingLikesUseCase = get(),
+            getSentLikeUidsUseCase = get(),
+            likeUserUseCase = get(),
+            ignoreIncomingLikeUseCase = get()
         )
     }
 
@@ -467,7 +587,8 @@ val presentationModule = module {
         ChatViewModel(
             getConversationsUseCase = get(),
             observeMessagesUseCase = get(),
-            sendMessageUseCase = get()
+            sendMessageUseCase = get(),
+            deleteSeenMessagesUseCase = get()
         )
     }
 
@@ -501,11 +622,19 @@ val presentationModule = module {
     factory {
         ProfileViewModel(
             getUserProfileUseCase = get(),
-            getConversationsUseCase = get(),
-            getIncomingLikesUseCase = get(),
+            getProfileStatsUseCase = get(),
             observeSubscriptionUseCase = get(),
             getBillingHistoryUseCase = get(),
-            deleteMyAccountUseCase = get(),
+            mindMingleRemoteRepository = get()
+        )
+    }
+
+    factory {
+        AccountSettingsViewModel(
+            deactivateMyAccountUseCase = get(),
+            requestAccountDeletionUseCase = get(),
+            getNotificationPrefsUseCase = get(),
+            saveNotificationPrefsUseCase = get(),
             mindMingleRemoteRepository = get()
         )
     }
@@ -517,8 +646,23 @@ val presentationModule = module {
     }
 
     factory {
+        AdminDeletionRequestsViewModel(
+            listDeletionRequestsUseCase = get(),
+            deleteUserCascadeUseCase = get(),
+            mindMingleRemoteRepository = get()
+        )
+    }
+
+    factory {
         AdminUserListViewModel(
             listAllUsersUseCase = get()
+        )
+    }
+
+    factory {
+        AdminSubscriberListViewModel(
+            listSubscribersUseCase = get(),
+            getSubscriberStatsUseCase = get()
         )
     }
 
@@ -526,6 +670,7 @@ val presentationModule = module {
         AdminUserDetailViewModel(
             getUserProfileUseCase = get(),
             setUserDisabledUseCase = get(),
+            unbanUserUseCase = get(),
             deleteUserCascadeUseCase = get(),
             getBillingHistoryUseCase = get(),
             adminSetSubscriptionUseCase = get(),

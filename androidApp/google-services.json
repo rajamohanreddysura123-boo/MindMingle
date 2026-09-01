@@ -15,6 +15,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "532395068238-d88oat5vo6nbc1ueaufgeab6og3ne52b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rajamohan.mindmingle",
+            "certificate_hash": "0b4eb8151d17cbe9d736f2c2bd85798e0dfc37c4"
+          }
+        },
+        {
+          "client_id": "532395068238-nlg7e4vn343gci8kjl0ubtu2lt3jk5ee.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rajamohan.mindmingle",
+            "certificate_hash": "e74f47128f17179e33ba9de336f5f622a5eb48c9"
+          }
+        },
+        {
           "client_id": "532395068238-v7pgf4e0h9b9ig05u246p57j3tlngd1t.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

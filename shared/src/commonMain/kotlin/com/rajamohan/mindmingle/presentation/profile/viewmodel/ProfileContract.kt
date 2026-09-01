@@ -11,16 +11,13 @@ import com.rajamohan.mindmingle.domain.model.nowMillis
 internal data class ProfileUiState(
     val isLoading: Boolean = false,
     val user: User? = null,
-    val matchesCount: Int = 0,
+    val conversationsCount: Int = 0,
     val likesCount: Int = 0,
     val isAccountBlocked: Boolean = false,
     val subscription: Subscription? = null,
     val billing: BillingHistory? = null,
     val isLoadingBilling: Boolean = false,
-    val billingError: String = "",
-    val isDeletingAccount: Boolean = false,
-    val isAccountDeleted: Boolean = false,
-    val deleteError: String = ""
+    val billingError: String = ""
 ) {
     val payments: List<PaymentRecord> get() = billing?.payments.orEmpty()
 

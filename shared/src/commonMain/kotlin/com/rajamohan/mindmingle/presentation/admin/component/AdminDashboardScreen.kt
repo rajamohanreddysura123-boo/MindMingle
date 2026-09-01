@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -42,7 +42,9 @@ import org.koin.compose.viewmodel.koinViewModel
 fun AdminDashboardScreen(
     onManageUsers: () -> Unit,
     onManagePricing: () -> Unit,
+    onManageSubscribers: () -> Unit,
     onManageSupport: () -> Unit,
+    onManageDeletionRequests: () -> Unit,
     onSignOut: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
@@ -61,7 +63,7 @@ fun AdminDashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .widthIn(max = 900.dp)
                 .padding(Spacing.desktopScreenPadding)
         ) {
@@ -119,8 +121,8 @@ fun AdminDashboardScreen(
                     )
                     AdminStatTile(
                         icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(22.dp)) },
-                        label = "Total Matches",
-                        value = uiState.stats.totalMatches.toString(),
+                        label = "Total Conversations",
+                        value = uiState.stats.totalConversations.toString(),
                         modifier = Modifier.weight(1f)
                     )
                     AdminStatTile(
@@ -155,6 +157,25 @@ fun AdminDashboardScreen(
                 }
 
                 Surface(
+                    onClick = onManageSubscribers,
+                    shape = RoundedCornerShape(18.dp),
+                    color = colors.tertiary,
+                    modifier = Modifier.height(52.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 28.dp)
+                    ) {
+                        Text(
+                            text = "Subscribers",
+                            style = typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.onTertiary
+                        )
+                    }
+                }
+
+                Surface(
                     onClick = onManagePricing,
                     shape = RoundedCornerShape(18.dp),
                     color = colors.secondary,
@@ -169,6 +190,25 @@ fun AdminDashboardScreen(
                             style = typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = colors.onSecondary
+                        )
+                    }
+                }
+
+                Surface(
+                    onClick = onManageDeletionRequests,
+                    shape = RoundedCornerShape(18.dp),
+                    color = colors.errorContainer,
+                    modifier = Modifier.height(52.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 28.dp)
+                    ) {
+                        Text(
+                            text = "Deletion Requests",
+                            style = typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.onErrorContainer
                         )
                     }
                 }

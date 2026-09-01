@@ -3,6 +3,8 @@ package com.rajamohan.mindmingle.core.media
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import com.rajamohan.mindmingle.core.AppContext
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -22,15 +24,39 @@ actual object ImagePicker {
         }
 
         pendingContinuation = continuation
-        pendingMaxCount = maxCount
+        pendingMaxCount = maxCount.coerceAtLeast(1)
 
-        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            type = "image/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-        }
-        activity.startActivityForResult(Intent.createChooser(intent, "Select Photos"), RC_PICK_IMAGES)
+        activity.startActivityForResult(pickerIntent(pendingMaxCount), RC_PICK_IMAGES)
 
         continuation.invokeOnCancellation { pendingContinuation = null }
+    }
+
+    /**
+     * Android 13+ has a system photo picker that enforces a maximum selection itself: the user is
+     * told "select up to 3" and simply cannot pick a fourth. That is the whole reason to prefer it
+     * — the older ACTION_GET_CONTENT chooser lets someone pick ten and then silently loses seven,
+     * which reads as the app dropping their photos.
+     *
+     * Below 33 (minSdk here is 29) the chooser is the only option and the count is enforced by
+     * truncation in [handleActivityResult].
+     */
+    private fun pickerIntent(maxCount: Int): Intent {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+                type = "image/*"
+                // The extra is only valid for multi-select; asking for one photo means the
+                // single-select picker, which rejects the extra outright.
+                if (maxCount > 1) {
+                    putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maxCount)
+                }
+            }
+        }
+
+        val chooser = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, maxCount > 1)
+        }
+        return Intent.createChooser(chooser, "Select Photos")
     }
 
     /** Wired from MainActivity.onActivityResult. Returns true if this result belonged to the picker. */

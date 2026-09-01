@@ -5,20 +5,29 @@ rules_version = '2';
 //   users/{uid}                          — profile docs (no photos; skills/bio/experience)
 //   likes/{fromUid}/sentTo/{toUid}        — outbound like markers
 //   incomingLikes/{toUid}/from/{fromUid}  — mirror written by the liker, read by the recipient
-//   matches/{matchId}                     — matchId = sorted "uidA_uidB", users: [uidA, uidB]
-//   matches/{matchId}/messages/{msgId}    — chat messages, participants only
-//   admins/{uid}                          — presence = that uid is an admin (Console, or the
-//                                            verifyEmailOtp Cloud Function for the reserved
-//                                            admin email — never writable by a client directly)
-//   bannedUids/{uid}                      — permanent tombstone for deleted/banned accounts
+//   conversations/{conversationId}        — conversationId = sorted "uidA_uidB", users: [uidA, uidB]
+//   conversations/{cId}/messages/{msgId}  — chat messages, participants only
+//   users/{uid}.userType                  — "user" | "admin"; the single source of admin rights,
+//                                            settable only from the Firebase Console (the field is
+//                                            immutable to the doc's own owner)
+//   bannedUids/{uid}                      — permanent tombstone for deleted/banned accounts.
+//                                            Also what keeps a purged account out for good: no
+//                                            client can delete somebody else's Firebase Auth
+//                                            record, so the uid is blocked instead
+//   deletionRequests/{uid}                — filed by the user from Account Settings, worked by
+//                                            the admin deletion queue (status pending|deleted)
 //   appConfig/ads                         — AdMob settings for the Discover deck (read: any
 //                                            signed-in client; write: admin only)
 //   appConfig/plans                       — MindMingle+ price list, one row per country (read: any signed-in
-//                                            user; write: admin only, normally through the
-//                                            savePlanPricing Cloud Function which re-validates rows)
+//                                            user; write: admin only, straight from the admin
+//                                            Plan Pricing screen — no Cloud Function involved)
 //   subscriptions/{uid}                   — MindMingle+ plan state, written only by the Razorpay Cloud
 //                                            Functions (functions/src/razorpay.ts); the owner reads it
 //   subscriptions/{uid}/payments/{payId}  — one doc per captured payment, also Functions-only
+//   subscriptions/{uid}/invoices/{number} — one invoice per captured payment, Functions-only;
+//                                            numbers come from the appConfig/invoiceCounter sequence
+//   subscriptions/{uid}/paymentAttempts/{orderId}
+//                                         — failed charges, so a decline leaves a trace
 //   emailOtps/{email}                     — Cloud-Functions-only OTP state (functions/src/index.ts)
 //   mail/{docId}                          — Cloud-Functions-only, watched by the "Trigger Email" extension
 //   anonymousQueue/{uid}                  — one doc per user waiting for an anonymous partner;
@@ -48,31 +57,46 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    function isMatchParticipant(matchId) {
+    function isConversationParticipant(conversationId) {
       return isSignedIn() &&
-        request.auth.uid in get(/databases/$(database)/documents/matches/$(matchId)).data.users;
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.users;
     }
 
-    // Admin = a doc exists at admins/{their uid}. That doc can only ever be
-    // created/removed via the Firebase Console or the verifyEmailOtp Cloud
-    // Function (Admin SDK, bypasses these rules) — never through a client
-    // write, admin or not — so there is no in-app privilege-escalation path.
+    // Admin = userType on their own profile doc reads "admin". The field is
+    // owner-immutable (see userTypeCreateAllowed/userTypeUnchanged below), so the
+    // only way to become one is the Firebase Console — there is no in-app
+    // privilege-escalation path. Costs one extra document read per admin-gated rule.
     function isAdmin() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userType', 'user') == 'admin';
     }
 
-    match /admins/{uid} {
+    // Collection-group access to every `messages` subcollection (match chat and support threads
+    // alike). A collection-group query is not covered by the per-parent rules below, so the
+    // admin dashboard's count() aggregation needs this to exist. Admins can already read both
+    // sets through those rules — this widens nothing, it just makes the group query legal.
+    match /{path=**}/messages/{messageId} {
       allow read: if isAdmin();
-      allow write: if false;
     }
 
     // AdMob settings for the Discover deck (ad frequency, gate duration, ad unit ids).
     // Every signed-in client reads it at Discover load; only an admin can retune it, so
     // no user can switch ads off for themselves or point the app at their own ad units.
+    // `invoiceCounter` is excluded rather than given its own stricter match: rules are OR'd,
+    // so a nested "allow write: if false" would not take anything away from this one. Editing
+    // it by hand would re-issue an invoice number that is already on a customer's receipt.
     match /appConfig/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isAdmin() && docId != 'invoiceCounter';
+    }
+
+    // The minimum supported app version, read by the Android in-app update gate at launch.
+    // Rules are OR'd, so this widens the read above from "signed in" to "anyone" for this one
+    // doc, deliberately: a user stuck on an unsupported build often cannot sign in at all, so
+    // a floor only readable after sign-in could never be enforced on the login screen. The doc
+    // holds nothing but version numbers and a boolean. Writes stay admin-only via the rule above.
+    match /appConfig/appUpdate {
+      allow read: if true;
     }
 
     // MindMingle+ subscription state. Only the Razorpay Cloud Functions write here (Admin SDK,
@@ -82,10 +106,27 @@ service cloud.firestore {
     match /subscriptions/{uid} {
       allow read: if isOwner(uid) || isAdmin();
       allow write: if false;
+      // The one client write allowed here: an admin clearing the row during an account purge.
+      allow delete: if isAdmin();
 
       match /payments/{paymentId} {
         allow read: if isOwner(uid) || isAdmin();
         allow write: if false;
+        allow delete: if isAdmin();
+      }
+
+      // An invoice is a financial record: readable by the person it was issued to, never
+      // editable by anyone once written.
+      match /invoices/{invoiceNumber} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+        allow delete: if isAdmin();
+      }
+
+      match /paymentAttempts/{orderId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+        allow delete: if isAdmin();
       }
     }
 
@@ -107,28 +148,80 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // A deactivation may be switched on freely by its owner, but only switched off again
+    // once reactivateAt has passed. That is the whole enforcement of "no early undo" —
+    // Account Settings has no cancel button, and neither does anything else that can talk
+    // to Firestore with this user's credentials.
+    function deactivationChangeAllowed() {
+      return request.resource.data.get('isDeactivated', false) ==
+               resource.data.get('isDeactivated', false) ||
+        (resource.data.get('isDeactivated', false) == false &&
+          request.resource.data.get('isDeactivated', false) == true) ||
+        (resource.data.get('isDeactivated', false) == true &&
+          request.resource.data.get('isDeactivated', false) == false &&
+          request.time.toMillis() >= resource.data.get('reactivateAt', 0));
+    }
+
+    // userType is what isAdmin() trusts, so the owner must never be able to move it: a create
+    // may only ever say "user", and an update has to carry back exactly what is already stored.
+    // Promotion happens in the Firebase Console (or by an admin, whose writes take the isAdmin()
+    // branch of the users rule) — never from the app.
+    function userTypeCreateAllowed() {
+      return request.resource.data.get('userType', 'user') == 'user';
+    }
+
+    function userTypeUnchanged() {
+      return request.resource.data.get('userType', 'user') == resource.data.get('userType', 'user');
+    }
+
+    // A deletion request is one-way for the owner: they can file one, never withdraw it.
+    // Only an admin working the deletionRequests queue can clear the flag.
+    function deletionFlagChangeAllowed() {
+      return request.resource.data.get('isDeletionRequested', false) ==
+               resource.data.get('isDeletionRequested', false) ||
+        (resource.data.get('isDeletionRequested', false) == false &&
+          request.resource.data.get('isDeletionRequested', false) == true);
+    }
+
     // Profiles: any signed-in user can read (needed for Discover, match headers,
     // chat headers); only the profile owner can create/update it — except the
     // isDisabled flag, which only an admin may flip (stops a client from just
-    // writing isDisabled:false to their own doc to self-reinstate).
+    // writing isDisabled:false to their own doc to self-reinstate), the
+    // deactivation/deletion flags, which are one-way for the owner (above), and
+    // userType, which the owner can never set or move at all.
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create: if isOwner(uid);
+      allow create: if isOwner(uid) && userTypeCreateAllowed();
       allow update: if (isOwner(uid) &&
-          request.resource.data.isDisabled == resource.data.isDisabled) || isAdmin();
+          request.resource.data.isDisabled == resource.data.isDisabled &&
+          userTypeUnchanged() &&
+          deactivationChangeAllowed() &&
+          deletionFlagChangeAllowed()) || isAdmin();
       allow delete: if isAdmin();
 
       // Push tokens. Private to their owner — the notification functions read them with the
-      // Admin SDK, and nobody else has any business enumerating someone's devices.
+      // Admin SDK, and nobody else has any business enumerating someone's devices. Admins can
+      // delete them, which an account purge needs.
       match /devices/{token} {
         allow read, write: if isOwner(uid);
+        allow read, delete: if isAdmin();
       }
     }
 
     // Per-category push switches. Owner-only; a missing doc means every category is on, so a
-    // user who never opens the settings still gets their messages.
+    // user who never opens the settings still gets their messages. Admin delete is for purges.
     match /notificationPrefs/{uid} {
       allow read, write: if isOwner(uid);
+      allow read, delete: if isAdmin();
+    }
+
+    // Users who asked to have their account removed (Profile → Account Settings → Delete).
+    // The owner files exactly one and can never take it back; the admin deletion queue reads
+    // these, runs the purge, and marks them done.
+    match /deletionRequests/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && request.resource.data.uid == uid;
+      allow update, delete: if isAdmin();
     }
 
     // Outbound likes: only the liker can write into their own "sentTo" list.
@@ -151,27 +244,35 @@ service cloud.firestore {
       allow delete: if isOwner(toUid) || isAdmin();
     }
 
-    // Matches: only the two participants (or an admin) can read; a match can
-    // only be created by one of the two users it names, and the users list is
-    // immutable after creation (only lastMessage/lastMessageAt can change,
-    // and only by a participant). Admin delete needed for cascade cleanup.
-    match /matches/{matchId} {
+    // Conversations, which replaced the old `matches` collection: the client writes
+    // conversations/{conversationId} on a mutual like and chats underneath it. The collection had
+    // no rule at all, so every read and write to it was denied by the default — opening a chat,
+    // sending a message and creating the conversation on a mutual like all failed silently behind
+    // the repository's try/catch.
+    //
+    // conversationId is the two uids sorted and joined with "_", so a pair always resolves to one
+    // document no matter who likes first.
+    match /conversations/{conversationId} {
       allow read: if isSignedIn() && (request.auth.uid in resource.data.users || isAdmin());
       allow create: if isSignedIn() &&
         request.auth.uid in request.resource.data.users &&
         request.resource.data.users.size() == 2;
-      allow update: if isMatchParticipant(matchId) &&
+      // Participants may update, but never rewrite who is in the conversation.
+      allow update: if isConversationParticipant(conversationId) &&
         request.resource.data.users == resource.data.users;
-      allow delete: if isAdmin();
+      allow delete: if isConversationParticipant(conversationId) || isAdmin();
 
-      // Messages: only the two match participants (or an admin) can read/send;
-      // admin delete needed for cascade cleanup on account deletion.
+      // Messages: only the two participants (or an admin) can read or send.
+      //
+      // Either participant may delete, which is the disappearing-message model — the recipient's
+      // client removes what it has shown, and the TTL policy on expiresAt sweeps whatever was
+      // never opened. A sender deleting their own message early is the same operation.
       match /messages/{messageId} {
-        allow read: if isMatchParticipant(matchId) || isAdmin();
-        allow create: if isMatchParticipant(matchId) &&
+        allow read: if isConversationParticipant(conversationId) || isAdmin();
+        allow create: if isConversationParticipant(conversationId) &&
           request.resource.data.senderId == request.auth.uid;
         allow update: if false;
-        allow delete: if isAdmin();
+        allow delete: if isConversationParticipant(conversationId) || isAdmin();
       }
     }
 

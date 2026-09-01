@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -49,6 +49,7 @@ import com.rajamohan.mindmingle.presentation.chat.viewmodel.ChatViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.ChatBubbleIcon
 import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.icon.MaskIcon
 import com.rajamohan.mindmingle.presentation.common.icon.SendIcon
 import com.rajamohan.mindmingle.presentation.common.icon.WaveIcon
 import com.rajamohan.mindmingle.presentation.theme.Spacing
@@ -65,12 +66,27 @@ private fun chatPaletteFor(uid: String): List<Color> =
     chatAvatarPalettes[(uid.hashCode().let { if (it < 0) -it else it }) % chatAvatarPalettes.size]
 
 @Composable
-fun ChatScreen(uid: String) {
+fun ChatScreen(
+    uid: String,
+    onOpenAnonymousChat: () -> Unit = {},
+    /** Set when a notification tap named a conversation; opened once the list has loaded. */
+    openConversationId: String = "",
+    onOpenConversationHandled: () -> Unit = {}
+) {
     val viewModel: ChatViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(uid) {
         viewModel.onEvent(ChatEvent.LoadConversations(uid))
+    }
+
+    // The conversation cannot be opened before its row exists — OpenConversation looks the
+    // conversation up in the loaded list — so this waits for the list rather than firing with uid.
+    LaunchedEffect(openConversationId, uiState.conversations) {
+        if (openConversationId.isBlank()) return@LaunchedEffect
+        if (uiState.conversations.none { it.conversationId == openConversationId }) return@LaunchedEffect
+        viewModel.onEvent(ChatEvent.OpenConversation(openConversationId))
+        onOpenConversationHandled()
     }
 
     val activeConversation = uiState.activeConversation
@@ -81,25 +97,39 @@ fun ChatScreen(uid: String) {
             messages = uiState.messages,
             onSend = { text ->
                 viewModel.onEvent(
-                    ChatEvent.SendMessage(matchId = activeConversation.matchId, senderId = uid, text = text)
+                    ChatEvent.SendMessage(conversationId = activeConversation.conversationId, senderId = uid, text = text)
                 )
             },
             onBack = { viewModel.onEvent(ChatEvent.CloseConversation) }
         )
     } else {
         ChatConversationListContent(
+            uid = uid,
             isLoading = uiState.isLoadingConversations,
-            conversations = uiState.conversations,
-            onOpenConversation = { matchId -> viewModel.onEvent(ChatEvent.OpenConversation(matchId)) }
+            isLoadingMore = uiState.isLoadingMore,
+            hasMore = uiState.hasMore,
+            query = uiState.query,
+            conversations = uiState.visibleConversations,
+            onQueryChange = { viewModel.onEvent(ChatEvent.SearchChanged(it)) },
+            onLoadMore = { viewModel.onEvent(ChatEvent.LoadMoreConversations) },
+            onOpenConversation = { conversationId -> viewModel.onEvent(ChatEvent.OpenConversation(conversationId)) },
+            onOpenAnonymousChat = onOpenAnonymousChat
         )
     }
 }
 
 @Composable
 private fun ChatConversationListContent(
+    uid: String,
     isLoading: Boolean,
+    isLoadingMore: Boolean,
+    hasMore: Boolean,
+    query: String,
     conversations: List<ChatConversation>,
-    onOpenConversation: (matchId: String) -> Unit
+    onQueryChange: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    onOpenConversation: (conversationId: String) -> Unit,
+    onOpenAnonymousChat: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -111,16 +141,74 @@ private fun ChatConversationListContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .padding(horizontal = Spacing.screenHorizontal, vertical = Spacing.screenVertical)
         ) {
-            Text(
-                text = "Messages & Chat",
-                style = typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = colors.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Messages & Chat",
+                    style = typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onBackground
+                )
+
+                // Anonymous chat used to be its own bottom-nav tab. It lives here now: it is a way
+                // of chatting, not a separate destination, and the nav bar is down to four items.
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = colors.primaryContainer.copy(alpha = 0.7f),
+                    modifier = Modifier.clickable(onClick = onOpenAnonymousChat)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        MaskIcon(color = colors.primary, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Anonymous",
+                            style = typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary
+                        )
+                    }
+                }
+            }
+
+            // Filters the pages already loaded — no query per keystroke.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.surfaceVariant.copy(alpha = 0.4f))
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = typography.bodyMedium.copy(color = colors.onSurface),
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { inner ->
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "Search chats",
+                                style = typography.bodyMedium,
+                                color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                        inner()
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -142,7 +230,7 @@ private fun ChatConversationListContent(
                                 color = colors.onSurface
                             )
                             Text(
-                                text = "Match with a tech partner in Discover to start chatting",
+                                text = "Like someone in Discover to start chatting",
                                 style = typography.bodySmall,
                                 color = colors.onSurfaceVariant
                             )
@@ -154,9 +242,9 @@ private fun ChatConversationListContent(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(conversations, key = { it.matchId }) { item ->
+                        items(conversations, key = { it.conversationId }) { item ->
                             Surface(
-                                onClick = { onOpenConversation(item.matchId) },
+                                onClick = { onOpenConversation(item.conversationId) },
                                 shape = RoundedCornerShape(18.dp),
                                 color = colors.surface,
                                 shadowElevation = 2.dp,
@@ -172,7 +260,7 @@ private fun ChatConversationListContent(
                                         modifier = Modifier
                                             .size(52.dp)
                                             .clip(CircleShape)
-                                            .background(Brush.linearGradient(chatPaletteFor(item.otherUser.uid))),
+                                            .background(Brush.linearGradient(chatPaletteFor(item.otherUid))),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(24.dp))
@@ -182,18 +270,55 @@ private fun ChatConversationListContent(
 
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = item.otherUser.name,
+                                            text = item.displayName,
                                             style = typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = colors.onSurface
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
+                                        // No preview text: messages disappear once seen, so a copy
+                                        // of one here would outlive the message itself.
                                         Text(
-                                            text = item.lastMessage.ifBlank { "You matched — say hi!" },
+                                            text = when {
+                                                item.hasUnreadFor(uid) -> "New message"
+                                                item.lastMessageAtSeconds > 0L -> "Opened"
+                                                else -> "Say hi!"
+                                            },
                                             style = typography.bodyMedium,
-                                            color = colors.onSurfaceVariant,
+                                            color = if (item.hasUnreadFor(uid)) colors.primary else colors.onSurfaceVariant,
+                                            fontWeight = if (item.hasUnreadFor(uid)) FontWeight.Bold else FontWeight.Normal,
                                             maxLines = 1
                                         )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Conversations arrive a page at a time; search covers what is loaded.
+                        if (hasMore && query.isBlank()) {
+                            item {
+                                Surface(
+                                    onClick = onLoadMore,
+                                    enabled = !isLoadingMore,
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = colors.surfaceVariant.copy(alpha = 0.4f),
+                                    modifier = Modifier.fillMaxWidth().height(46.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (isLoadingMore) {
+                                            CircularProgressIndicator(
+                                                color = colors.primary,
+                                                strokeWidth = 2.dp,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "Load older chats",
+                                                style = typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.onSurface
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -232,7 +357,7 @@ private fun ChatThreadContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
         ) {
             // Thread header
             Row(
@@ -258,7 +383,7 @@ private fun ChatThreadContent(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(Brush.linearGradient(chatPaletteFor(conversation.otherUser.uid))),
+                        .background(Brush.linearGradient(chatPaletteFor(conversation.otherUid))),
                     contentAlignment = Alignment.Center
                 ) {
                     DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(18.dp))
@@ -268,13 +393,13 @@ private fun ChatThreadContent(
 
                 Column {
                     Text(
-                        text = conversation.otherUser.name,
+                        text = conversation.displayName,
                         style = typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = colors.onSurface
                     )
                     Text(
-                        text = conversation.otherUser.occupation,
+                        text = if (conversation.isOtherUserDeleted) "Account deleted" else "Connected",
                         style = typography.labelSmall,
                         color = colors.onSurfaceVariant
                     )
@@ -300,7 +425,7 @@ private fun ChatThreadContent(
                             WaveIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(28.dp))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "You matched with ${conversation.otherUser.name}. Say hi!",
+                                text = "Start the conversation with ${conversation.displayName}.",
                                 style = typography.bodyMedium,
                                 color = colors.onSurfaceVariant
                             )
@@ -358,7 +483,7 @@ private fun ChatThreadContent(
                         decorationBox = { inner ->
                             if (draftText.isEmpty()) {
                                 Text(
-                                    text = "Message ${conversation.otherUser.name}…",
+                                    text = "Message ${conversation.displayName}…",
                                     style = typography.bodyMedium,
                                     color = colors.onSurfaceVariant.copy(alpha = 0.6f)
                                 )

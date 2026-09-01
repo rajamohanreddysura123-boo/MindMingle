@@ -1,6 +1,6 @@
 package com.rajamohan.mindmingle.core
 
-import android.content.Context
+import android.app.Application
 import com.google.firebase.FirebasePlatform
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.FirebaseOptions
@@ -35,7 +35,10 @@ object JvmFirebaseInitializer {
             )
 
             Firebase.initialize(
-                context = Context(),
+                // Must be Application, not a bare Context: Firestore's AndroidConnectivityMonitor
+                // casts context.applicationContext to Application, and the stub Context returns
+                // itself from applicationContext, which would throw ClassCastException.
+                context = Application(),
                 options = FirebaseOptions(
                     applicationId = "1:532395068238:android:d2f8ca7dc7c361f2f46c1f",
                     apiKey = "AIzaSyAWyx_YOnFTCCNlFkWMlrOjtrc9cF8VgLc",

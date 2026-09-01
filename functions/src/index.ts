@@ -1,3 +1,6 @@
+// First, and deliberately so: it pins the region for every function defined below, including
+// the ones re-exported from ./razorpay and ./notifications.
+import "./options";
 import * as admin from "firebase-admin";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
@@ -8,16 +11,13 @@ export {
   createRazorpayOrder,
   verifyRazorpayPayment,
   razorpayWebhook,
-  getPaymentDetails,
   getBillingHistory,
+  recordPaymentFailure,
   adminSetSubscription,
   adminCancelSubscription,
-  getPlanPricing,
-  savePlanPricing,
-  resetPlanPricing,
 } from "./razorpay";
 
-export { deleteMyAccount, adminDeleteUser } from "./account";
+export { adminListSubscribers, adminSubscriberStats } from "./subscribers";
 
 export {
   onChatMessageCreated,
@@ -28,14 +28,24 @@ export {
 } from "./notifications";
 
 /**
- * The one hardcoded admin address for MindMingle. Whoever verifies this email via
- * requestEmailOtp/verifyEmailOtp gets admins/{uid} set for their Firebase Auth
- * account. Firebase Auth resolves accounts by email regardless of sign-in
- * method, so once this is set, that same person's Google sign-in on mobile
- * (see AuthViewModel.admitIfAllowed / OOAdminRepository.isCurrentUserAdmin)
- * is recognized as admin automatically — no separate mobile-side check needed.
+ * No address is special here. Admin rights are `users/{uid}.userType == "admin"`, set by hand in
+ * the Firebase Console — sign-in never promotes anyone. See firestore.rules isAdmin().
  */
-const ADMIN_EMAIL = "rajamohanreddysura123@gmail.com";
+/**
+ * Who `verifyEmailOtp` runs as.
+ *
+ * Minting a custom token means signing a JWT, and a deployed function holds no private key — it
+ * asks the IAM Credentials API to sign for it (`iam.serviceAccounts.signBlob`). The default
+ * compute service account this project's functions otherwise run as does not have that, so every
+ * verify died with `auth/insufficient-permission` and surfaced to the client as a bare INTERNAL.
+ *
+ * The Firebase Admin SDK service account already holds `roles/iam.serviceAccountTokenCreator`
+ * project-wide, so pinning this one function to it makes signing work without depending on an
+ * IAM grant that has to be maintained by hand. Only this function needs it; everything else stays
+ * on the default account.
+ */
+const OTP_SIGNER_SERVICE_ACCOUNT =
+  "firebase-adminsdk-fbsvc@tech-connect-44987.iam.gserviceaccount.com";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
@@ -86,11 +96,11 @@ export const requestEmailOtp = onCall(async (request) => {
 
 /**
  * Verifies the mailed code. On success: ensures a Firebase Auth user exists for
- * that email (creating one if this is a brand-new sign-in), flips admins/{uid}
- * when the email is the reserved admin address, and returns a custom token so
- * the client can sign in as that uid.
+ * that email (creating one if this is a brand-new sign-in) and returns a custom
+ * token so the client can sign in as that uid. Grants nothing — every account
+ * that comes through here is an ordinary user until userType says otherwise.
  */
-export const verifyEmailOtp = onCall(async (request) => {
+export const verifyEmailOtp = onCall({ serviceAccount: OTP_SIGNER_SERVICE_ACCOUNT }, async (request) => {
   const email = String(request.data?.email ?? "").trim();
   const code = String(request.data?.code ?? "").trim();
   if (!email || !code) {
@@ -123,8 +133,6 @@ export const verifyEmailOtp = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Incorrect code");
   }
 
-  await docRef.delete();
-
   const normalized = normalizeEmail(email);
   let userRecord: admin.auth.UserRecord;
   try {
@@ -133,17 +141,13 @@ export const verifyEmailOtp = onCall(async (request) => {
     userRecord = await admin.auth().createUser({ email: normalized, emailVerified: true });
   }
 
-  if (normalized === ADMIN_EMAIL.toLowerCase()) {
-    await db.collection("admins").doc(userRecord.uid).set(
-      {
-        email: normalized,
-        grantedAt: admin.firestore.FieldValue.serverTimestamp(),
-        grantedVia: "emailOtp",
-      },
-      { merge: true }
-    );
-  }
-
   const customToken = await admin.auth().createCustomToken(userRecord.uid);
+
+  // Deleted only once the token exists. Deleting first meant any failure past this point — the
+  // signing permission error this project actually hit — burned a code the user had typed
+  // correctly, forcing a new email for every retry. The replay window is the few milliseconds
+  // between minting and deleting, and the code is single-use from the next request onward.
+  await docRef.delete();
+
   return { customToken, uid: userRecord.uid };
 });

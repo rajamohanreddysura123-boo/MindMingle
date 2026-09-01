@@ -23,7 +23,7 @@ import { PLAN_DAYS } from "./pricing";
 
 const db = () => admin.firestore();
 
-export type NotificationCategory = "messages" | "likes" | "matches" | "payments" | "support";
+export type NotificationCategory = "messages" | "likes" | "payments" | "support";
 
 interface PushPayload {
   title: string;
@@ -37,6 +37,19 @@ async function isCategoryEnabled(uid: string, category: NotificationCategory): P
   const snap = await db().collection("notificationPrefs").doc(uid).get();
   if (!snap.exists) return true;
   return snap.data()?.[category] !== false;
+}
+
+/**
+ * A deactivated user is meant to hear nothing at all while their break runs, and a deleted one
+ * never again — neither should be pinged by anything still in flight.
+ */
+async function isReachable(uid: string): Promise<boolean> {
+  const snap = await db().collection("users").doc(uid).get();
+  const user = snap.data();
+  if (!user) return false;
+  if (user.isDisabled === true || user.isDeletionRequested === true) return false;
+  const reactivateAt = Number(user.reactivateAt ?? 0);
+  return !(user.isDeactivated === true && Date.now() < reactivateAt);
 }
 
 async function tokensFor(uid: string): Promise<string[]> {
@@ -63,6 +76,11 @@ export async function sendToUser(
     return 0;
   }
 
+  if (!(await isReachable(uid))) {
+    logger.debug("notification skipped, account not reachable", { uid, category });
+    return 0;
+  }
+
   const tokens = await tokensFor(uid);
   if (tokens.length === 0) return 0;
 
@@ -72,7 +90,10 @@ export async function sendToUser(
     data: { category, ...(payload.data ?? {}) },
     android: {
       priority: "high",
-      notification: { channelId: "oo_default", sound: "default" },
+      // Must match the channel the app creates in PushPlatform.android.kt. Android drops a
+      // notification addressed to a channel that does not exist, without any error the sender
+      // can see — this said "oo_default" while the app registers "mindmingle_default".
+      notification: { channelId: "mindmingle_default", sound: "default" },
     },
     apns: {
       payload: { aps: { sound: "default", badge: 1 } },
@@ -118,26 +139,28 @@ function preview(text: string, limit = 120): string {
 // Chat
 // ---------------------------------------------------------------------------
 
+// The client writes chat under `conversations`, not `matches` — these triggers watched a
+// collection nothing writes to any more, so they never fired.
 export const onChatMessageCreated = onDocumentCreated(
-  "matches/{matchId}/messages/{messageId}",
+  "conversations/{conversationId}/messages/{messageId}",
   async (event) => {
     const message = event.data?.data();
     if (!message) return;
 
-    const matchId = event.params.matchId;
+    const conversationId = event.params.conversationId;
     const senderId = String(message.senderId ?? "");
     const text = String(message.text ?? "");
     if (!senderId) return;
 
-    const matchSnap = await db().collection("matches").doc(matchId).get();
-    const users: string[] = matchSnap.data()?.users ?? [];
+    const conversationSnap = await db().collection("conversations").doc(conversationId).get();
+    const users: string[] = conversationSnap.data()?.users ?? [];
     const recipient = users.find((uid) => uid !== senderId);
     if (!recipient) return;
 
     await sendToUser(recipient, "messages", {
       title: await displayName(senderId),
       body: preview(text),
-      data: { type: "chat", matchId, senderId },
+      data: { type: "chat", conversationId, senderId },
     });
   }
 );
@@ -152,10 +175,10 @@ export const onLikeReceived = onDocumentCreated(
     const { toUid, fromUid } = event.params;
     if (!toUid || !fromUid || toUid === fromUid) return;
 
-    // A mutual like creates the match doc in the same breath; that trigger owns the "It's a
+    // A mutual like opens the conversation in the same breath; that trigger owns the "It's a
     // match" notification, so this one would be a duplicate.
-    const matchId = [toUid, fromUid].sort().join("_");
-    if ((await db().collection("matches").doc(matchId).get()).exists) return;
+    const conversationId = [toUid, fromUid].sort().join("_");
+    if ((await db().collection("conversations").doc(conversationId).get()).exists) return;
 
     await sendToUser(toUid, "likes", {
       title: "Someone liked you",
@@ -165,23 +188,24 @@ export const onLikeReceived = onDocumentCreated(
   }
 );
 
-export const onMatchCreated = onDocumentCreated("matches/{matchId}", async (event) => {
+export const onMatchCreated = onDocumentCreated("conversations/{conversationId}", async (event) => {
   const users: string[] = event.data?.data()?.users ?? [];
   if (users.length !== 2) return;
 
+  const conversationId = event.params.conversationId;
   const [first, second] = users;
   const names = await Promise.all([displayName(first), displayName(second)]);
 
   await Promise.all([
-    sendToUser(first, "matches", {
+    sendToUser(first, "likes", {
       title: "It's a match!",
       body: `You and ${names[1]} liked each other. Say hi.`,
-      data: { type: "match", matchId: event.params.matchId, withUid: second },
+      data: { type: "match", conversationId, withUid: second },
     }),
-    sendToUser(second, "matches", {
+    sendToUser(second, "likes", {
       title: "It's a match!",
       body: `You and ${names[0]} liked each other. Say hi.`,
-      data: { type: "match", matchId: event.params.matchId, withUid: first },
+      data: { type: "match", conversationId, withUid: first },
     }),
   ]);
 });
@@ -211,7 +235,7 @@ export const onSupportMessageCreated = onDocumentCreated(
 
     // A user wrote in: ping every admin so the desktop inbox is not a thing someone has to
     // remember to check.
-    const admins = await db().collection("admins").get();
+    const admins = await db().collection("users").where("userType", "==", "admin").get();
     const name = await displayName(uid);
     await Promise.all(
       admins.docs.map((doc) =>

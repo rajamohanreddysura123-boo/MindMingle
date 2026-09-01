@@ -3,6 +3,20 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+        Android 13+ refuses to show any notification without this, and the runtime request in
+        PushPlatform.requestPermission() is auto-denied when the permission is not declared here.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        Location is what makes "2.4 km away" true. Before this the coordinates came from an IP
+        lookup, which resolves to the ISP's egress point — the wrong suburb on Wi-Fi and often the
+        wrong city on mobile data. Coarse is declared alongside fine because a user may grant only
+        approximate location, which is still far better than an IP, and the app never needs a fix
+        sharper than the kilometre it displays.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -13,19 +27,36 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <!--
-            AdMob app id. The Mobile Ads SDK crashes the app on startup if this is missing.
-            This is Google's public TEST app id — replace with the real one from
-            AdMob console > Apps > App settings > App ID before release. It is NOT the
-            same value as an ad unit id (those live in Firestore appConfig/ads).
+            AdMob app id for the MindMingle Android app. The Mobile Ads SDK crashes the app on
+            startup if this is missing. It is NOT an ad unit id — the banner and interstitial
+            unit ids live in Firestore appConfig/ads so they can change without a release.
+
+            Because this is the live app id, register every development device as an AdMob test
+            device before running a debug build against live unit ids; clicking your own live ads
+            is invalid traffic and gets the account disabled.
         -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-5695092989497722~6154394086" />
+
+        <!--
+            Firebase Cloud Messaging's entry point. Without this declaration FCM has nowhere to
+            deliver a token rotation or a foreground message, and MindMingleMessagingService is
+            never constructed.
+        -->
+        <service
+            android:name=".MindMingleMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <activity
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask"
             android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

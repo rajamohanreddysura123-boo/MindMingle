@@ -1,7 +1,6 @@
 package com.rajamohan.mindmingle.domain.repository
 
 import com.rajamohan.mindmingle.domain.model.BillingHistory
-import com.rajamohan.mindmingle.domain.model.PaymentDetails
 import com.rajamohan.mindmingle.domain.model.PaymentOrder
 import com.rajamohan.mindmingle.domain.model.PlanCatalog
 import com.rajamohan.mindmingle.domain.model.PremiumPlan
@@ -23,15 +22,16 @@ interface SubscriptionRepository {
 
     suspend fun verifyPayment(orderId: String, paymentId: String, signature: String): Result<Subscription>
 
-    suspend fun getSubscription(uid: String): Subscription?
-
     fun observeSubscription(uid: String): Flow<Subscription?>
 
     /** Order history; blank [uid] means the signed-in user. Another uid requires admin. */
     suspend fun getBillingHistory(uid: String = ""): Result<BillingHistory>
 
-    /** Re-reads a payment from Razorpay, granting it if it was captured but never recorded. */
-    suspend fun getPaymentDetails(paymentId: String): Result<PaymentDetails>
+    /**
+     * Reports a checkout that failed on the device. Nothing is granted; the attempt is recorded
+     * and the user is emailed that no money was taken. Never throws.
+     */
+    suspend fun recordPaymentFailure(orderId: String, planId: String, reason: String)
 
     /** Admin-only: grants or extends a plan without a payment. */
     suspend fun adminSetSubscription(uid: String, plan: PremiumPlan, days: Int): Result<Subscription>

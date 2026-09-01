@@ -13,9 +13,6 @@ data class LocationResult(
 ) {
     val displayString: String
         get() = listOf(city, region, country).filter { it.isNotBlank() }.distinct().joinToString(", ")
-
-    val hasCoordinates: Boolean
-        get() = latitude != null && longitude != null
 }
 
 @Serializable

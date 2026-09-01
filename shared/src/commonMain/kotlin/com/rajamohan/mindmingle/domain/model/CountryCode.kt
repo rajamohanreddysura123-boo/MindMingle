@@ -42,6 +42,20 @@ data class CountryCode(
 }
 
 object CountryCodeRepository {
+
+    /**
+     * The ISO code for a country *name*, or blank when it is not one of the 242 in the list.
+     *
+     * The IP lookup that fills a profile's location reports a name ("India"), and the country
+     * filter compares codes — a name has spellings, translations and punctuation, a code does not.
+     * Matching is case- and space-insensitive for the same reason.
+     */
+    suspend fun codeForName(name: String): String {
+        if (name.isBlank()) return ""
+        val normalised = name.trim().lowercase()
+        return getCountryCodes().firstOrNull { it.name.trim().lowercase() == normalised }?.code.orEmpty()
+    }
+
     private var cachedList: List<CountryCode>? = null
     private val json = Json { ignoreUnknownKeys = true }
 

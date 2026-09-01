@@ -20,31 +20,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun GoogleSignInButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = MaterialTheme.colorScheme
-
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = colors.surface,
-        shadowElevation = 6.dp,
-        border = BorderStroke(1.dp, colors.outline.copy(alpha = 0.2f)),
-        modifier = modifier.size(60.dp)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            GoogleLogoIcon(modifier = Modifier.size(26.dp))
-        }
-    }
-}
-
-/** Desktop's primary sign-in trigger — no working Google OAuth on JVM, so email + a mailed code instead. */
-@Composable
 fun EmailSignInButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier

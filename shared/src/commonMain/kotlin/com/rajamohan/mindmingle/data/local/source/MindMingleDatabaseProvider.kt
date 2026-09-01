@@ -10,6 +10,8 @@ internal class MindMingleDatabaseProvider(
 ) {
     private companion object {
         const val DISCOVER_FILTERS_KEY = "discover_filters"
+        const val LAST_LIKE_ALERT_PREFIX = "last_like_alert_"
+        const val LAST_MESSAGE_ALERT_PREFIX = "last_message_alert_"
     }
 
     /** Tolerates criteria fields added in a later release rather than throwing away the whole stored set. */
@@ -31,6 +33,30 @@ internal class MindMingleDatabaseProvider(
         preferences.delete("user_phone")
         // Filters are personal — the next account to sign in on this device must not inherit them.
         preferences.delete(DISCOVER_FILTERS_KEY)
+    }
+
+    /**
+     * High-water marks for the notification watchers, per account: the newest like and the newest
+     * incoming message this device has already announced. Kept per uid because two people signing
+     * into the same phone must not inherit each other's marks, and stored as text because
+     * [LMPreferences] has no Long type.
+     */
+    suspend fun saveLastLikeAlertAt(uid: String, millis: Long) {
+        preferences.update("$LAST_LIKE_ALERT_PREFIX$uid", millis.toString(), String::class)
+    }
+
+    /** 0 means this device has never announced a like for [uid] — the backlog is not news. */
+    suspend fun getLastLikeAlertAt(uid: String): Long {
+        return preferences.get("$LAST_LIKE_ALERT_PREFIX$uid", "", String::class).toLongOrNull() ?: 0L
+    }
+
+    suspend fun saveLastMessageAlertAt(uid: String, seconds: Long) {
+        preferences.update("$LAST_MESSAGE_ALERT_PREFIX$uid", seconds.toString(), String::class)
+    }
+
+    /** In seconds, matching the conversation row's own timestamp. */
+    suspend fun getLastMessageAlertAt(uid: String): Long {
+        return preferences.get("$LAST_MESSAGE_ALERT_PREFIX$uid", "", String::class).toLongOrNull() ?: 0L
     }
 
     suspend fun saveDiscoverFilters(criteria: DiscoverFilterCriteria) {

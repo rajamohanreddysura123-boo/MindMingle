@@ -12,6 +12,7 @@ import com.rajamohan.mindmingle.domain.usecase.DeleteUserCascadeUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetBillingHistoryUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetUserProfileUseCase
 import com.rajamohan.mindmingle.domain.usecase.SetUserDisabledUseCase
+import com.rajamohan.mindmingle.domain.usecase.UnbanUserUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +28,9 @@ data class AdminUserDetailUiState(
     val billing: BillingHistory? = null,
     val isLoadingBilling: Boolean = false,
     val isSubscriptionMutating: Boolean = false,
-    val subscriptionMessage: String = ""
+    val subscriptionMessage: String = "",
+    /** Set after a successful unban, so the screen can say something happened. */
+    val banMessage: String = ""
 ) {
     val hasActivePlan: Boolean get() = billing?.isActive == true
 
@@ -42,6 +45,7 @@ data class AdminUserDetailUiState(
 class AdminUserDetailViewModel(
     private val getUserProfileUseCase: GetUserProfileUseCase,
     private val setUserDisabledUseCase: SetUserDisabledUseCase,
+    private val unbanUserUseCase: UnbanUserUseCase,
     private val deleteUserCascadeUseCase: DeleteUserCascadeUseCase,
     private val getBillingHistoryUseCase: GetBillingHistoryUseCase,
     private val adminSetSubscriptionUseCase: AdminSetSubscriptionUseCase,
@@ -133,6 +137,31 @@ class AdminUserDetailViewModel(
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(isMutating = false, error = e.message ?: "Update failed") }
+                }
+        }
+    }
+
+    /**
+     * Lifts a ban by deleting the `bannedUids/{uid}` tombstone.
+     *
+     * The tombstone is what a purge leaves behind: a client SDK cannot delete somebody else's
+     * Firebase Auth record, so the uid is blocked instead and every sign-in path turns it away.
+     * Until now nothing in the app could remove one — an admin could ban and not unban, and the
+     * only way back was the Firebase Console.
+     *
+     * There is deliberately no confirmation: unbanning is the reversible direction, and the row
+     * can be re-banned by running the purge again.
+     */
+    fun unbanUser() {
+        val user = _uiState.value.user ?: return
+        _uiState.update { it.copy(isMutating = true, error = "", banMessage = "") }
+        viewModelScope.launch {
+            unbanUserUseCase(user.uid)
+                .onSuccess {
+                    _uiState.update { it.copy(isMutating = false, banMessage = "Ban lifted — this uid can sign in again") }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(isMutating = false, error = e.message ?: "Unban failed") }
                 }
         }
     }

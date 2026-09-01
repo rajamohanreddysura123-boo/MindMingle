@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.home.component.mobile.DesktopBreakpoint
 import com.rajamohan.mindmingle.presentation.profilesetup.component.desktop.DesktopProfileSetupScreen
@@ -71,7 +72,6 @@ import org.koin.compose.viewmodel.koinViewModel
 fun ProfileSetupScreen(
     uid: String,
     email: String,
-    phoneNumber: String,
     prefillName: String = "",
     isEditMode: Boolean = false,
     onBack: () -> Unit = {},
@@ -82,7 +82,6 @@ fun ProfileSetupScreen(
             DesktopProfileSetupScreen(
                 uid = uid,
                 email = email,
-                phoneNumber = phoneNumber,
                 prefillName = prefillName,
                 isEditMode = isEditMode,
                 onBack = onBack,
@@ -92,7 +91,6 @@ fun ProfileSetupScreen(
             MobileProfileSetupScreen(
                 uid = uid,
                 email = email,
-                phoneNumber = phoneNumber,
                 prefillName = prefillName,
                 isEditMode = isEditMode,
                 onBack = onBack,
@@ -106,7 +104,6 @@ fun ProfileSetupScreen(
 private fun MobileProfileSetupScreen(
     uid: String,
     email: String,
-    phoneNumber: String,
     prefillName: String = "",
     isEditMode: Boolean = false,
     onBack: () -> Unit = {},
@@ -121,7 +118,6 @@ private fun MobileProfileSetupScreen(
         viewModel.onEvent(ProfileSetupEvent.LoadExisting(uid))
         if (!isEditMode) {
             if (prefillName.isNotBlank()) viewModel.onEvent(ProfileSetupEvent.NameChanged(prefillName))
-            if (phoneNumber.isNotBlank()) viewModel.onEvent(ProfileSetupEvent.PrefillPhone(phoneNumber))
             viewModel.onEvent(ProfileSetupEvent.DetectLocation)
         }
     }
@@ -135,7 +131,7 @@ private fun MobileProfileSetupScreen(
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxSize()
-                .safeContentPadding()
+                .safeDrawingPadding()
                 .padding(horizontal = Spacing.screenHorizontal, vertical = Spacing.screenVertical)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -196,6 +192,13 @@ private fun MobileProfileSetupScreen(
                 Text(text = uiState.error, style = typography.bodySmall, color = colors.error)
             }
 
+            // Why Next is greyed out — the required fields are usually scrolled off the top.
+            val missingHint = uiState.missingHintFor(uiState.currentStep)
+            if (missingHint.isNotBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = missingHint, style = typography.bodySmall, color = colors.onSurfaceVariant)
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             WizardNavRow(
@@ -217,7 +220,7 @@ private fun PhotosStep(uiState: ProfileSetupUiState, viewModel: ProfileSetupView
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    StepHeading(title = "Add Your Photos", subtitle = "At least one photo is required — up to 5. Each one must clearly show your face.")
+    StepHeading(title = "Add Your Photos", subtitle = "At least one photo is required — up to $MAX_PROFILE_PHOTOS. Each one must clearly show your face.")
     Spacer(modifier = Modifier.height(20.dp))
     PhotoPickerRow(
         photos = uiState.photos,

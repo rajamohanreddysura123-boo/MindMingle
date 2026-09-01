@@ -12,7 +12,6 @@ internal sealed class ProfileSetupEvent {
     data class NameChanged(val name: String) : ProfileSetupEvent()
     data class PhoneChanged(val phone: String) : ProfileSetupEvent()
     data class CountryCodeSelected(val country: CountryCode) : ProfileSetupEvent()
-    data class PrefillPhone(val rawPhoneNumber: String) : ProfileSetupEvent()
     data class BioChanged(val bio: String) : ProfileSetupEvent()
     data class OccupationQueryChanged(val query: String) : ProfileSetupEvent()
     data class OccupationSelected(val occupation: String) : ProfileSetupEvent()
@@ -70,6 +69,11 @@ internal data class ProfileSetupUiState(
     val lookingFor: String = "",
     val portfolioLinks: List<String> = listOf(""),
     val location: String = "",
+    /** ISO code for [location], resolved when it was detected; blank when typed by hand. */
+    val countryCode: String = "",
+    /** ADM1 and ADM2 for the detected location — what the region and district filters match on. */
+    val region: String = "",
+    val district: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,
     val isDetectingLocation: Boolean = false,
@@ -139,6 +143,48 @@ internal data class ProfileSetupUiState(
         ProfileSetupSteps.WORK -> isWorkStepValid
         ProfileSetupSteps.PREFERENCES -> isPreferencesStepValid
         else -> true
+    }
+
+    /**
+     * What is still holding Next back on [step]. A step's required fields can sit far above the
+     * fold — Basics ends in a long language list — so the button alone can't explain itself.
+     */
+    fun missingFor(step: Int): List<String> = when (step) {
+        ProfileSetupSteps.PHOTOS -> buildList {
+            if (photos.isEmpty()) add("at least one photo")
+            if (photos.any { it.isUploading }) add("photo upload to finish")
+        }
+
+        ProfileSetupSteps.BASICS -> buildList {
+            if (name.isBlank()) add("your name")
+            if (!PhoneNumberRules.isValidLength(selectedCountry.code, phone.length)) {
+                val expected = PhoneNumberRules.expectedLength(selectedCountry.code)
+                val digits = if (expected.first == expected.last) {
+                    "${expected.first}"
+                } else {
+                    "${expected.first}-${expected.last}"
+                }
+                add("a $digits digit mobile number")
+            }
+            if (ageValue == null || ageValue!! <= 0) add("your date of birth")
+        }
+
+        ProfileSetupSteps.WORK -> buildList {
+            if (selectedOccupation.isBlank()) add("your occupation")
+        }
+
+        ProfileSetupSteps.PREFERENCES -> buildList {
+            if (experienceLevel.isBlank()) add("an experience level")
+            if (lookingFor.isBlank()) add("what you're looking for")
+        }
+
+        else -> emptyList()
+    }
+
+    /** The [missingFor] list as one line, or blank when the step is complete. */
+    fun missingHintFor(step: Int): String {
+        val missing = missingFor(step)
+        return if (missing.isEmpty()) "" else "Still needed: ${missing.joinToString(", ")}"
     }
 
     val isValid: Boolean

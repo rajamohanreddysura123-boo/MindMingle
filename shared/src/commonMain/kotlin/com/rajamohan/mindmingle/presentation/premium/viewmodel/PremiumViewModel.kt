@@ -11,6 +11,7 @@ import com.rajamohan.mindmingle.domain.usecase.CreatePaymentOrderUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetPlanCatalogUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetUserProfileUseCase
 import com.rajamohan.mindmingle.domain.usecase.ObserveSubscriptionUseCase
+import com.rajamohan.mindmingle.domain.usecase.RecordPaymentFailureUseCase
 import com.rajamohan.mindmingle.domain.usecase.VerifyPaymentUseCase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,7 @@ import kotlinx.coroutines.launch
 internal class PremiumViewModel(
     private val createPaymentOrderUseCase: CreatePaymentOrderUseCase,
     private val verifyPaymentUseCase: VerifyPaymentUseCase,
+    private val recordPaymentFailureUseCase: RecordPaymentFailureUseCase,
     private val observeSubscriptionUseCase: ObserveSubscriptionUseCase,
     private val getPlanCatalogUseCase: GetPlanCatalogUseCase,
     private val getUserProfileUseCase: GetUserProfileUseCase
@@ -106,9 +108,16 @@ internal class PremiumViewModel(
 
             when (val result = PaymentPlatform.startCheckout(order.toCheckoutRequest())) {
                 is CheckoutResult.Success -> verify(result)
+                // A cancel is a decision, not a failure — nothing was attempted, so nothing is
+                // recorded and the user is not emailed about it.
                 is CheckoutResult.Cancelled -> _uiState.update { it.copy(isProcessing = false) }
-                is CheckoutResult.Failed -> _uiState.update {
-                    it.copy(isProcessing = false, error = result.message)
+                is CheckoutResult.Failed -> {
+                    _uiState.update { it.copy(isProcessing = false, error = result.message) }
+                    recordPaymentFailureUseCase(
+                        orderId = order.orderId,
+                        planId = state.selectedPlan.id,
+                        reason = result.message
+                    )
                 }
             }
         }
