@@ -1,6 +1,7 @@
 package com.rajamohan.mindmingle.domain.repository
 
 import com.rajamohan.mindmingle.domain.model.BillingHistory
+import com.rajamohan.mindmingle.domain.model.PaymentLink
 import com.rajamohan.mindmingle.domain.model.PaymentOrder
 import com.rajamohan.mindmingle.domain.model.PlanCatalog
 import com.rajamohan.mindmingle.domain.model.PremiumPlan
@@ -19,6 +20,9 @@ interface SubscriptionRepository {
     suspend fun resetPlanCatalog(): Result<Int>
 
     suspend fun createOrder(plan: PremiumPlan, countryHint: String): Result<PaymentOrder>
+
+    /** A hosted payment page, for platforms with no Razorpay checkout SDK. */
+    suspend fun createPaymentLink(plan: PremiumPlan, countryHint: String): Result<PaymentLink>
 
     suspend fun verifyPayment(orderId: String, paymentId: String, signature: String): Result<Subscription>
 

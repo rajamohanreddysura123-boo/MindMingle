@@ -1,6 +1,7 @@
 package com.rajamohan.mindmingle.domain.model
 
 import com.rajamohan.mindmingle.data.remote.dto.CreateOrderResponseDto
+import com.rajamohan.mindmingle.data.remote.dto.CreatePaymentLinkResponseDto
 import com.rajamohan.mindmingle.data.remote.dto.SubscriptionDto
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -28,6 +29,22 @@ data class Subscription(
     }
 }
 
+/**
+ * A payment link and how long it stays payable.
+ *
+ * There is no result to hand back when it is paid: the payment happens in a browser or on a phone,
+ * and the app learns about it the same way it learns about an admin grant — the subscription
+ * document changes underneath it.
+ */
+data class PaymentLink(
+    val linkId: String,
+    val url: String,
+    val amountMinor: Long,
+    val currency: String,
+    val planId: String,
+    val expiresAt: Long
+)
+
 data class PaymentOrder(
     val orderId: String,
     val amountMinor: Long,
@@ -46,6 +63,15 @@ fun SubscriptionDto.toDomain(): Subscription = Subscription(
     status = status,
     currentPeriodEnd = currentPeriodEnd,
     lastPaymentId = lastPaymentId
+)
+
+fun CreatePaymentLinkResponseDto.toDomain(): PaymentLink = PaymentLink(
+    linkId = linkId,
+    url = url,
+    amountMinor = amount,
+    currency = currency,
+    planId = planId,
+    expiresAt = expiresAt
 )
 
 fun CreateOrderResponseDto.toDomain(): PaymentOrder = PaymentOrder(

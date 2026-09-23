@@ -12,15 +12,25 @@ data class PaymentRecord(
     val currency: String,
     val country: String,
     val source: String,
-    val createdAt: Long
+    val createdAt: Long,
+    /** "success" for a captured `payments` row, "failed" for a `paymentAttempts` decline. A
+     *  `paymentAttempts` doc that is merely "link_created" (a QR generated, not yet paid or
+     *  declined) is deliberately left out of this — that status never flips to "paid" on success,
+     *  so surfacing it would show every successful desktop payment twice. */
+    val status: String = "success",
+    /** Razorpay's decline reason, only ever set when [status] is "failed". */
+    val reason: String = ""
 ) {
     val plan: PremiumPlan? get() = PremiumPlan.fromId(planId)
 
     val isAdminGrant: Boolean get() = source == "admin-grant"
 
+    val isFailed: Boolean get() = status == "failed"
+
     val dateLabel: String get() = formatUtcDate(createdAt)
 
     fun amountLabel(decimals: Int = 2): String = when {
+        isFailed -> "—"
         isAdminGrant -> "Granted"
         currency.isBlank() -> "—"
         else -> "${formatMinorAmount(amount, decimals, symbol = "")} $currency"
@@ -145,7 +155,9 @@ fun PaymentRecordDto.toDomain(): PaymentRecord = PaymentRecord(
     currency = currency,
     country = country,
     source = source,
-    createdAt = createdAt
+    createdAt = createdAt,
+    status = status,
+    reason = reason
 )
 
 fun InvoiceDto.toDomain(): Invoice = Invoice(

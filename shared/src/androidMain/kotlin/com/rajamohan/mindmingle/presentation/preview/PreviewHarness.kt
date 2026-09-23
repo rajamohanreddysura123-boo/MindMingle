@@ -15,6 +15,7 @@ import com.rajamohan.mindmingle.domain.model.DiscoverFilterCriteria
 import com.rajamohan.mindmingle.domain.model.DiscoverPage
 import com.rajamohan.mindmingle.domain.model.IncomingLike
 import com.rajamohan.mindmingle.domain.model.MessageAlert
+import com.rajamohan.mindmingle.domain.model.PaymentLink
 import com.rajamohan.mindmingle.domain.model.PaymentOrder
 import com.rajamohan.mindmingle.domain.model.PlanCatalog
 import com.rajamohan.mindmingle.domain.model.PremiumPlan
@@ -188,6 +189,8 @@ private class PreviewLocalRepository : MindMingleLocalRepository {
     override suspend fun saveLastLikeAlertAt(uid: String, millis: Long) = Unit
     override suspend fun getLastMessageAlertAt(uid: String): Long = 0L
     override suspend fun saveLastMessageAlertAt(uid: String, seconds: Long) = Unit
+    override suspend fun getLastLocationAttemptAt(uid: String): Long = 0L
+    override suspend fun saveLastLocationAttemptAt(uid: String, millis: Long) = Unit
 }
 
 private class PreviewAdminRepository : MindMingleAdminRepository {
@@ -219,6 +222,18 @@ private class PreviewSubscriptionRepository : SubscriptionRepository {
     override suspend fun getPlanCatalog(countryHint: String): Result<PlanCatalog> = Result.success(PlanCatalog())
     override suspend fun savePlanCatalog(catalog: PlanCatalog): Result<Int> = Result.success(0)
     override suspend fun resetPlanCatalog(): Result<Int> = Result.success(0)
+    override suspend fun createPaymentLink(plan: PremiumPlan, countryHint: String): Result<PaymentLink> =
+        Result.success(
+            PaymentLink(
+                linkId = "plink_preview",
+                url = "https://rzp.io/i/preview",
+                amountMinor = 49900,
+                currency = "INR",
+                planId = plan.id,
+                expiresAt = 0L
+            )
+        )
+
     override suspend fun createOrder(plan: PremiumPlan, countryHint: String): Result<PaymentOrder> =
         Result.failure(IllegalStateException("previews do not open checkout"))
 

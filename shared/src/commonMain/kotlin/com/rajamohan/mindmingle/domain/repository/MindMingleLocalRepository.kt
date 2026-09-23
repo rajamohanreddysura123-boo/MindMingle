@@ -19,6 +19,11 @@ interface MindMingleLocalRepository {
 
     suspend fun saveLastMessageAlertAt(uid: String, seconds: Long)
 
+    /** Newest location refresh *attempt* (success or failure) for [uid]; 0 when never tried. */
+    suspend fun getLastLocationAttemptAt(uid: String): Long
+
+    suspend fun saveLastLocationAttemptAt(uid: String, millis: Long)
+
     suspend fun saveDiscoverFilters(criteria: DiscoverFilterCriteria): Boolean
 
     /** Null when the user has never applied a filter on this device. */

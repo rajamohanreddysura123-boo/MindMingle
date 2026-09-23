@@ -1,10 +1,33 @@
 package com.rajamohan.mindmingle.presentation.chat.component.mobile
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +51,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,18 +61,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.rajamohan.mindmingle.domain.model.ChatConversation
 import com.rajamohan.mindmingle.domain.model.ChatMessage
 import com.rajamohan.mindmingle.presentation.chat.viewmodel.ChatEvent
 import com.rajamohan.mindmingle.presentation.chat.viewmodel.ChatViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.ChatBubbleIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.common.icon.MaskIcon
 import com.rajamohan.mindmingle.presentation.common.icon.SendIcon
 import com.rajamohan.mindmingle.presentation.common.icon.WaveIcon
@@ -65,19 +88,41 @@ private val chatAvatarPalettes = listOf(
 private fun chatPaletteFor(uid: String): List<Color> =
     chatAvatarPalettes[(uid.hashCode().let { if (it < 0) -it else it }) % chatAvatarPalettes.size]
 
+/** Row entrance/removal used by both the conversation list and the message thread — a fade
+ *  paired with a soft spring settle reads as "arrived", not "popped in". Reused so both lists
+ *  move to the same rhythm. */
+private val rowFadeInSpec = tween<Float>(durationMillis = 260, easing = LinearEasing)
+private val rowFadeOutSpec = tween<Float>(durationMillis = 150, easing = LinearEasing)
+private val rowPlacementSpec = spring<androidx.compose.ui.unit.IntOffset>(
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessMediumLow
+)
+
 @Composable
 fun ChatScreen(
     uid: String,
     onOpenAnonymousChat: () -> Unit = {},
     /** Set when a notification tap named a conversation; opened once the list has loaded. */
     openConversationId: String = "",
-    onOpenConversationHandled: () -> Unit = {}
+    onOpenConversationHandled: () -> Unit = {},
+    /** Told every time an open thread's presence flips, so the host can hide its bottom nav
+     *  while a conversation is open — a thread is full-screen messaging, not a tab. */
+    onThreadOpenChanged: (Boolean) -> Unit = {}
 ) {
     val viewModel: ChatViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(uid) {
         viewModel.onEvent(ChatEvent.LoadConversations(uid))
+    }
+
+    LaunchedEffect(uiState.activeConversation) {
+        onThreadOpenChanged(uiState.activeConversation != null)
+    }
+    // Covers leaving the Chat tab entirely (host disposes this composable) while a thread was
+    // still open — without this the bottom nav would stay hidden on every other tab.
+    DisposableEffect(Unit) {
+        onDispose { onThreadOpenChanged(false) }
     }
 
     // The conversation cannot be opened before its row exists — OpenConversation looks the
@@ -89,32 +134,51 @@ fun ChatScreen(
         onOpenConversationHandled()
     }
 
-    val activeConversation = uiState.activeConversation
-    if (activeConversation != null) {
-        ChatThreadContent(
-            uid = uid,
-            conversation = activeConversation,
-            messages = uiState.messages,
-            onSend = { text ->
-                viewModel.onEvent(
-                    ChatEvent.SendMessage(conversationId = activeConversation.conversationId, senderId = uid, text = text)
-                )
-            },
-            onBack = { viewModel.onEvent(ChatEvent.CloseConversation) }
-        )
-    } else {
-        ChatConversationListContent(
-            uid = uid,
-            isLoading = uiState.isLoadingConversations,
-            isLoadingMore = uiState.isLoadingMore,
-            hasMore = uiState.hasMore,
-            query = uiState.query,
-            conversations = uiState.visibleConversations,
-            onQueryChange = { viewModel.onEvent(ChatEvent.SearchChanged(it)) },
-            onLoadMore = { viewModel.onEvent(ChatEvent.LoadMoreConversations) },
-            onOpenConversation = { conversationId -> viewModel.onEvent(ChatEvent.OpenConversation(conversationId)) },
-            onOpenAnonymousChat = onOpenAnonymousChat
-        )
+    // The list and an open thread are two different screens wearing the same composable, so they
+    // get a real navigation transition between them — the thread pushes in from the right and the
+    // list slides back out from the left on the way back, each cross-faded against the other
+    // rather than just cutting. Keyed on conversationId so switching straight from one open thread
+    // to another (e.g. via a notification tap) still reads as a fresh push, not a no-op.
+    AnimatedContent(
+        targetState = uiState.activeConversation,
+        transitionSpec = {
+            val opening = targetState != null && initialState?.conversationId != targetState?.conversationId
+            if (opening) {
+                (slideInHorizontally(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)) { it / 3 } + fadeIn(tween(220)))
+                    .togetherWith(fadeOut(tween(150)) + slideOutHorizontally(tween(220)) { -it / 6 })
+            } else {
+                (slideInHorizontally(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)) { -it / 3 } + fadeIn(tween(220)))
+                    .togetherWith(fadeOut(tween(150)) + slideOutHorizontally(tween(220)) { it / 3 })
+            }
+        },
+        label = "chat_thread_transition"
+    ) { target ->
+        if (target != null) {
+            ChatThreadContent(
+                uid = uid,
+                conversation = target,
+                messages = uiState.messages,
+                onSend = { text ->
+                    viewModel.onEvent(
+                        ChatEvent.SendMessage(conversationId = target.conversationId, senderId = uid, text = text)
+                    )
+                },
+                onBack = { viewModel.onEvent(ChatEvent.CloseConversation) }
+            )
+        } else {
+            ChatConversationListContent(
+                uid = uid,
+                isLoading = uiState.isLoadingConversations,
+                isLoadingMore = uiState.isLoadingMore,
+                hasMore = uiState.hasMore,
+                query = uiState.query,
+                conversations = uiState.visibleConversations,
+                onQueryChange = { viewModel.onEvent(ChatEvent.SearchChanged(it)) },
+                onLoadMore = { viewModel.onEvent(ChatEvent.LoadMoreConversations) },
+                onOpenConversation = { conversationId -> viewModel.onEvent(ChatEvent.OpenConversation(conversationId)) },
+                onOpenAnonymousChat = onOpenAnonymousChat
+            )
+        }
     }
 }
 
@@ -152,19 +216,13 @@ private fun ChatConversationListContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Messages & Chat",
+                    text = "Messages",
                     style = typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = colors.onBackground
                 )
 
-                // Anonymous chat used to be its own bottom-nav tab. It lives here now: it is a way
-                // of chatting, not a separate destination, and the nav bar is down to four items.
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = colors.primaryContainer.copy(alpha = 0.7f),
-                    modifier = Modifier.clickable(onClick = onOpenAnonymousChat)
-                ) {
+                BouncyPill(onClick = onOpenAnonymousChat) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -181,13 +239,26 @@ private fun ChatConversationListContent(
                 }
             }
 
-            // Filters the pages already loaded — no query per keystroke.
+            val searchInteraction = remember { MutableInteractionSource() }
+            val searchFocused by searchInteraction.collectIsFocusedAsState()
+            val searchBg by animateColorAsState(
+                targetValue = if (searchFocused) colors.surfaceVariant.copy(alpha = 0.65f) else colors.surfaceVariant.copy(alpha = 0.4f),
+                animationSpec = tween(200),
+                label = "search_bg"
+            )
+            val searchBorder by animateColorAsState(
+                targetValue = if (searchFocused) colors.primary.copy(alpha = 0.6f) else Color.Transparent,
+                animationSpec = tween(200),
+                label = "search_border"
+            )
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(46.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(colors.surfaceVariant.copy(alpha = 0.4f))
+                    .background(searchBg)
+                    .border(1.dp, searchBorder, RoundedCornerShape(14.dp))
                     .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -196,6 +267,7 @@ private fun ChatConversationListContent(
                     onValueChange = onQueryChange,
                     singleLine = true,
                     textStyle = typography.bodyMedium.copy(color = colors.onSurface),
+                    interactionSource = searchInteraction,
                     modifier = Modifier.fillMaxWidth(),
                     decorationBox = { inner ->
                         if (query.isEmpty()) {
@@ -219,21 +291,27 @@ private fun ChatConversationListContent(
                     }
                 }
                 conversations.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            ChatBubbleIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(40.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = "No conversations yet",
-                                style = typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.onSurface
-                            )
-                            Text(
-                                text = "Like someone in Discover to start chatting",
-                                style = typography.bodySmall,
-                                color = colors.onSurfaceVariant
-                            )
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.9f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                ChatBubbleIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(40.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "No conversations yet",
+                                    style = typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.onSurface
+                                )
+                                Text(
+                                    text = "Like someone in Discover to start chatting",
+                                    style = typography.bodySmall,
+                                    color = colors.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -243,58 +321,18 @@ private fun ChatConversationListContent(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(conversations, key = { it.conversationId }) { item ->
-                            Surface(
+                            ConversationRow(
+                                uid = uid,
+                                item = item,
                                 onClick = { onOpenConversation(item.conversationId) },
-                                shape = RoundedCornerShape(18.dp),
-                                color = colors.surface,
-                                shadowElevation = 2.dp,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.linearGradient(chatPaletteFor(item.otherUid))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(24.dp))
-                                    }
-
-                                    Spacer(modifier = Modifier.width(14.dp))
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = item.displayName,
-                                            style = typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.onSurface
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        // No preview text: messages disappear once seen, so a copy
-                                        // of one here would outlive the message itself.
-                                        Text(
-                                            text = when {
-                                                item.hasUnreadFor(uid) -> "New message"
-                                                item.lastMessageAtSeconds > 0L -> "Opened"
-                                                else -> "Say hi!"
-                                            },
-                                            style = typography.bodyMedium,
-                                            color = if (item.hasUnreadFor(uid)) colors.primary else colors.onSurfaceVariant,
-                                            fontWeight = if (item.hasUnreadFor(uid)) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = rowFadeInSpec,
+                                    placementSpec = rowPlacementSpec,
+                                    fadeOutSpec = rowFadeOutSpec
+                                )
+                            )
                         }
 
-                        // Conversations arrive a page at a time; search covers what is loaded.
                         if (hasMore && query.isBlank()) {
                             item {
                                 Surface(
@@ -330,6 +368,131 @@ private fun ChatConversationListContent(
     }
 }
 
+/** A conversation row: settles in with the shared list rhythm, dips slightly under a finger,
+ *  and pulses its unread dot so a new match doesn't just sit there unnoticed. */
+@Composable
+private fun ConversationRow(
+    uid: String,
+    item: ChatConversation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val typography = MaterialTheme.typography
+
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "row_press_scale"
+    )
+
+    val isUnread = item.hasUnreadFor(uid)
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interaction,
+        shape = RoundedCornerShape(18.dp),
+        color = colors.surface,
+        shadowElevation = 2.dp,
+        modifier = modifier.fillMaxWidth().scale(pressScale)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(52.dp)
+            ) {
+                RemoteProfileImage(
+                    url = item.otherUserAvatarUrl,
+                    uid = item.otherUid,
+                    contentDescription = item.displayName,
+                    placeholderIconSize = 24.dp,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.displayName,
+                    style = typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isUnread) {
+                        PulsingDot(color = colors.primary)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = when {
+                            isUnread -> "New message"
+                            item.lastMessageAtSeconds > 0L -> "Opened"
+                            else -> "Say hi!"
+                        },
+                        style = typography.bodyMedium,
+                        color = if (isUnread) colors.primary else colors.onSurfaceVariant,
+                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A small dot that breathes — the least intrusive way to say "this one's new" without a badge
+ *  shouting over the whole row. */
+@Composable
+private fun PulsingDot(color: Color) {
+    val transition = rememberInfiniteTransition(label = "unread_pulse")
+    val scale by transition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "unread_pulse_scale"
+    )
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(color)
+    )
+}
+
+/** Shared button chrome for a pill that should feel like it's actually being pressed. */
+@Composable
+private fun BouncyPill(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "pill_press_scale"
+    )
+    Surface(
+        onClick = onClick,
+        interactionSource = interaction,
+        shape = RoundedCornerShape(50),
+        color = colors.primaryContainer.copy(alpha = 0.7f),
+        modifier = Modifier.scale(scale)
+    ) {
+        content()
+    }
+}
+
 @Composable
 private fun ChatThreadContent(
     uid: String,
@@ -359,18 +522,26 @@ private fun ChatThreadContent(
                 .fillMaxSize()
                 .safeDrawingPadding()
         ) {
-            // Thread header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val backInteraction = remember { MutableInteractionSource() }
+                val backPressed by backInteraction.collectIsPressedAsState()
+                val backScale by animateFloatAsState(
+                    targetValue = if (backPressed) 0.85f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                    label = "back_press_scale"
+                )
+
                 Surface(
                     onClick = onBack,
+                    interactionSource = backInteraction,
                     shape = CircleShape,
                     color = colors.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(40.dp).scale(backScale)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         BackArrowIcon(color = colors.onSurface, modifier = Modifier.size(16.dp))
@@ -380,13 +551,15 @@ private fun ChatThreadContent(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(chatPaletteFor(conversation.otherUid))),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier.size(40.dp)
                 ) {
-                    DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(18.dp))
+                    RemoteProfileImage(
+                        url = conversation.otherUserAvatarUrl,
+                        uid = conversation.otherUid,
+                        contentDescription = conversation.displayName,
+                        placeholderIconSize = 18.dp,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
@@ -406,7 +579,9 @@ private fun ChatThreadContent(
                 }
             }
 
-            // Messages
+            // Messages — each bubble fades and settles into place via animateItem(), which only
+            // fires for genuinely new items (a real send/receive), not for ones merely scrolling
+            // back into view, so re-scrolling the thread never replays the entrance.
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -414,21 +589,26 @@ private fun ChatThreadContent(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp)
+                contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 if (messages.isEmpty()) {
                     item {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.9f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
                         ) {
-                            WaveIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(28.dp))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Start the conversation with ${conversation.displayName}.",
-                                style = typography.bodyMedium,
-                                color = colors.onSurfaceVariant
-                            )
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                WaveIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Start the conversation with ${conversation.displayName}.",
+                                    style = typography.bodyMedium,
+                                    color = colors.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -436,7 +616,13 @@ private fun ChatThreadContent(
                 items(messages, key = { it.id }) { message ->
                     val isMine = message.senderId == uid
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .animateItem(
+                                fadeInSpec = rowFadeInSpec,
+                                placementSpec = rowPlacementSpec,
+                                fadeOutSpec = rowFadeOutSpec
+                            ),
                         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
                     ) {
                         Surface(
@@ -467,18 +653,28 @@ private fun ChatThreadContent(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
+                val fieldInteraction = remember { MutableInteractionSource() }
+                val fieldFocused by fieldInteraction.collectIsFocusedAsState()
+                val fieldBorder by animateColorAsState(
+                    targetValue = if (fieldFocused) colors.primary.copy(alpha = 0.5f) else Color.Transparent,
+                    animationSpec = tween(200),
+                    label = "input_border"
+                )
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(24.dp))
                         .background(colors.surface)
+                        .border(1.dp, fieldBorder, RoundedCornerShape(24.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     BasicTextField(
                         value = draftText,
                         onValueChange = { draftText = it },
                         textStyle = typography.bodyMedium.copy(color = colors.onSurface),
+                        interactionSource = fieldInteraction,
                         modifier = Modifier.fillMaxWidth(),
                         decorationBox = { inner ->
                             if (draftText.isEmpty()) {
@@ -495,6 +691,20 @@ private fun ChatThreadContent(
 
                 Spacer(modifier = Modifier.width(10.dp))
 
+                val canSend = draftText.isNotBlank()
+                val sendInteraction = remember { MutableInteractionSource() }
+                val sendPressed by sendInteraction.collectIsPressedAsState()
+                val sendScale by animateFloatAsState(
+                    targetValue = if (sendPressed && canSend) 0.85f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                    label = "send_press_scale"
+                )
+                val sendColor by animateColorAsState(
+                    targetValue = if (canSend) colors.primary else colors.surfaceVariant,
+                    animationSpec = tween(200),
+                    label = "send_color"
+                )
+
                 Surface(
                     onClick = {
                         if (draftText.isNotBlank()) {
@@ -502,12 +712,16 @@ private fun ChatThreadContent(
                             draftText = ""
                         }
                     },
+                    interactionSource = sendInteraction,
                     shape = CircleShape,
-                    color = colors.primary,
-                    modifier = Modifier.size(48.dp)
+                    color = sendColor,
+                    modifier = Modifier.size(48.dp).scale(sendScale)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        SendIcon(color = colors.onPrimary, modifier = Modifier.size(18.dp))
+                        SendIcon(
+                            color = if (canSend) colors.onPrimary else colors.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }

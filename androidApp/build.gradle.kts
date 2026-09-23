@@ -42,6 +42,20 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    // A universal APK was carrying all four ABIs' native libs (Firestore's gRPC core, Skia,
+    // ML Kit) at once — x86/x86_64 alone were ~18MB dead weight on every real device, which only
+    // ever runs one ABI. No real phone in this app's market ships x86; armeabi-v7a stays for
+    // older 32-bit devices still inside minSdk 29. Play's App Bundle path already does this kind
+    // of per-device delivery on its own — this is what makes a directly-installed/sideloaded APK
+    // match that.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true

@@ -80,6 +80,13 @@ internal class HomeViewModel(
      */
     private val connectedUids = mutableSetOf<String>()
 
+    /**
+     * Uids passed on from the wall this session. Kept apart from [connectedUids] because the two
+     * mean different things to a recycled deck: a connection is permanent, whereas a pass is a
+     * "not now" that may legitimately come round again once the server has nothing new left.
+     */
+    private val passedUids = mutableSetOf<String>()
+
     private companion object {
         /** Cards left in the deck before the next page is fetched. */
         const val DECK_REFILL_THRESHOLD = 5
@@ -90,6 +97,7 @@ internal class HomeViewModel(
             is HomeEvent.LoadProfiles -> loadProfiles(event.uid)
             is HomeEvent.Connect -> connect(event.fromUid, event.toUid)
             is HomeEvent.Pass -> advance()
+            is HomeEvent.PassProfile -> passProfile(event.uid)
             is HomeEvent.ApplyFilters -> {
                 // Filters now apply when the sheet closes rather than on a button press, so this
                 // fires on every close — including the ones that changed nothing. Re-querying then
@@ -330,6 +338,8 @@ internal class HomeViewModel(
                 return@launch
             }
 
+            // A pass is forgiven at this point but a connection is not: there is nothing left to
+            // show, and a second look at someone skipped an hour ago beats an empty screen.
             val recyclable = _uiState.value.allProfiles.filterNot { it.uid in connectedUids }
             if (recyclable.isEmpty()) {
                 // Everyone in the deck was connected with, so there is nothing honest to show.
@@ -354,6 +364,22 @@ internal class HomeViewModel(
             likeUserUseCase(fromUid, toUid)
         }
         advance()
+    }
+
+    /**
+     * Removes one profile from the wall.
+     *
+     * Unlike [advance] this touches no index: the desktop grid renders every loaded profile, so a
+     * pass has to take the person out of the list rather than move a cursor past them. Refilling
+     * still works — the removed uid stays in [seenUids], so a later page does not hand them back.
+     */
+    private fun passProfile(uid: String) {
+        if (uid.isBlank()) return
+        passedUids += uid
+        _uiState.update { state ->
+            state.copy(allProfiles = state.allProfiles.filterNot { it.uid == uid })
+        }
+        loadMoreProfilesIfNeeded()
     }
 
     private fun advance() {

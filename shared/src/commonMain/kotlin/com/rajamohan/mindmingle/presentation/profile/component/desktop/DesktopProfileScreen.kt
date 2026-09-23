@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,15 +40,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.rajamohan.mindmingle.domain.model.Invoice
 import com.rajamohan.mindmingle.presentation.billing.InvoiceDetailDialog
 import com.rajamohan.mindmingle.presentation.common.icon.CheckBadgeIcon
 import com.rajamohan.mindmingle.presentation.common.icon.CrownIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.common.icon.FlameIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HeartIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HelpCircleIcon
@@ -71,7 +69,12 @@ fun DesktopProfileScreen(
     onUpgradeClick: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
     onOpenSupportClick: () -> Unit = {},
-    onOpenAccountSettingsClick: () -> Unit = {}
+    onOpenAccountSettingsClick: () -> Unit = {},
+    onLikesClick: () -> Unit = {},
+    onChatsClick: () -> Unit = {},
+    /** Changed by the caller every time Edit Profile is closed, so the profile — completeness
+     *  bar included — reloads on return. See the mobile ProfileScreen for the full reasoning. */
+    refreshToken: Any = Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -79,7 +82,7 @@ fun DesktopProfileScreen(
     val viewModel: ProfileViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(uid) {
+    LaunchedEffect(uid, refreshToken) {
         viewModel.loadProfile(uid)
     }
 
@@ -110,16 +113,16 @@ fun DesktopProfileScreen(
                 Surface(shape = RoundedCornerShape(28.dp), color = colors.surface, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(contentAlignment = Alignment.BottomEnd) {
-                            Box(
+                            RemoteProfileImage(
+                                url = uiState.user?.displayPhotoUrls?.firstOrNull().orEmpty(),
+                                uid = uid,
+                                contentDescription = "Your profile photo",
+                                placeholderIconSize = 46.dp,
                                 modifier = Modifier
                                     .size(96.dp)
                                     .clip(CircleShape)
-                                    .background(Brush.linearGradient(listOf(colors.primary, colors.secondary)))
-                                    .border(3.dp, colors.surface, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(46.dp))
-                            }
+                                    .border(3.dp, colors.surface, CircleShape)
+                            )
                             Surface(
                                 onClick = onEditProfileClick,
                                 shape = CircleShape,
@@ -166,8 +169,8 @@ fun DesktopProfileScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DesktopStatTile(icon = { HeartIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.likesCount}", label = "Likes", modifier = Modifier.weight(1f))
-                    DesktopStatTile(icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.conversationsCount}", label = "Chats", modifier = Modifier.weight(1f))
+                    DesktopStatTile(icon = { HeartIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.likesCount}", label = "Likes", onClick = onLikesClick, modifier = Modifier.weight(1f))
+                    DesktopStatTile(icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.conversationsCount}", label = "Chats", onClick = onChatsClick, modifier = Modifier.weight(1f))
                     DesktopStatTile(icon = { BoltIcon(color = colors.primary, modifier = Modifier.size(18.dp)) }, value = "${uiState.user?.interests?.size ?: 0}", label = "Interests", modifier = Modifier.weight(1f))
                 }
 
@@ -367,11 +370,11 @@ fun DesktopProfileScreen(
 }
 
 @Composable
-private fun DesktopStatTile(icon: @Composable () -> Unit, value: String, label: String, modifier: Modifier = Modifier) {
+private fun DesktopStatTile(icon: @Composable () -> Unit, value: String, label: String, onClick: () -> Unit = {}, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    Surface(shape = RoundedCornerShape(18.dp), color = colors.surface, shadowElevation = 2.dp, modifier = modifier) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), color = colors.surface, shadowElevation = 2.dp, modifier = modifier) {
         Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             icon()
             Spacer(modifier = Modifier.height(4.dp))

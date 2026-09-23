@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.home.component.mobile.avatarGradientFor
 import com.rajamohan.mindmingle.presentation.profilesetup.component.shared.OccupationPickerField
 import com.rajamohan.mindmingle.presentation.profilesetup.component.shared.PhoneNumberField
@@ -187,18 +187,16 @@ fun DesktopProfileSetupScreen(
 
                     Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().height(140.dp).background(Brush.linearGradient(avatarGradientFor(uid))),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier.size(72.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f))
-                                        .border(3.dp, Color.White, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(34.dp))
-                                }
-                            }
+                            // The live preview is only worth having if it shows the photo that was
+                            // just uploaded — otherwise it previews everything except the part
+                            // people actually judge.
+                            RemoteProfileImage(
+                                url = uiState.photos.firstOrNull()?.url.orEmpty(),
+                                uid = uid,
+                                contentDescription = "Preview photo",
+                                placeholderIconSize = 34.dp,
+                                modifier = Modifier.fillMaxWidth().height(140.dp)
+                            )
                             Column(modifier = Modifier.padding(18.dp)) {
                                 Text(text = uiState.name.ifBlank { "Your name" }, style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
                                 Text(

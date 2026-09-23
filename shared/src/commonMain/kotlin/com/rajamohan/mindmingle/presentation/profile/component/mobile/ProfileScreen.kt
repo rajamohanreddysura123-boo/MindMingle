@@ -1,6 +1,5 @@
 package com.rajamohan.mindmingle.presentation.profile.component.mobile
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,10 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,10 +41,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.rajamohan.mindmingle.core.settings.AppearanceMode
 import com.rajamohan.mindmingle.core.settings.AppearanceSettings
 import com.rajamohan.mindmingle.domain.model.Invoice
@@ -54,7 +51,7 @@ import com.rajamohan.mindmingle.presentation.billing.InvoiceDetailDialog
 import com.rajamohan.mindmingle.presentation.common.component.LogoutConfirmDialog
 import com.rajamohan.mindmingle.presentation.common.icon.CheckBadgeIcon
 import com.rajamohan.mindmingle.presentation.common.icon.CrownIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.common.icon.FlameIcon
 import com.rajamohan.mindmingle.presentation.common.icon.GearIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HeartIcon
@@ -75,7 +72,16 @@ fun ProfileScreen(
     onUpgradeClick: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
     onOpenSupportClick: () -> Unit = {},
-    onOpenAccountSettingsClick: () -> Unit = {}
+    onOpenAccountSettingsClick: () -> Unit = {},
+    onLikesClick: () -> Unit = {},
+    onChatsClick: () -> Unit = {},
+    /**
+     * Changed by the caller every time Edit Profile is closed, so the profile — completeness bar
+     * included — reloads on return instead of showing whatever was on screen before the edit.
+     * `LaunchedEffect(uid)` alone is not enough: this composable's own call site does not change
+     * uid across an edit, only whether the host currently shows it or the setup screen instead.
+     */
+    refreshToken: Any = Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -83,7 +89,7 @@ fun ProfileScreen(
     val viewModel: ProfileViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(uid) {
+    LaunchedEffect(uid, refreshToken) {
         viewModel.loadProfile(uid)
     }
 
@@ -143,21 +149,20 @@ fun ProfileScreen(
                 ) {
                     // Avatar Container with Edit Badge & Verified Tag
                     Box(contentAlignment = Alignment.BottomEnd) {
-                        Box(
+                        // Your own face, not a glyph. Every other surface in the app now shows
+                        // real photos, and the one place a person looks for themselves was the
+                        // last still drawing the placeholder.
+                        RemoteProfileImage(
+                            url = uiState.user?.displayPhotoUrls?.firstOrNull().orEmpty(),
+                            uid = uid,
+                            contentDescription = "Your profile photo",
+                            placeholderIconSize = 46.dp,
                             modifier = Modifier
                                 .size(96.dp)
                                 .shadow(8.dp, CircleShape)
                                 .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(colors.primary, colors.secondary)
-                                    )
-                                )
-                                .border(3.dp, colors.surface, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(46.dp))
-                        }
+                                .border(3.dp, colors.surface, CircleShape)
+                        )
 
                         // Edit Badge
                         Surface(
@@ -315,12 +320,14 @@ fun ProfileScreen(
                     number = "${uiState.likesCount}",
                     label = "Likes",
                     icon = { HeartIcon(color = colors.primary, modifier = Modifier.size(20.dp)) },
+                    onClick = onLikesClick,
                     modifier = Modifier.weight(1f)
                 )
                 ProfileStatCard(
                     number = "${uiState.conversationsCount}",
                     label = "Chats",
                     icon = { FlameIcon(color = colors.primary, modifier = Modifier.size(20.dp)) },
+                    onClick = onChatsClick,
                     modifier = Modifier.weight(1f)
                 )
                 ProfileStatCard(
@@ -607,12 +614,14 @@ private fun ProfileStatCard(
     number: String,
     label: String,
     icon: @Composable () -> Unit,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(20.dp),
         color = colors.surface,
         shadowElevation = 3.dp,

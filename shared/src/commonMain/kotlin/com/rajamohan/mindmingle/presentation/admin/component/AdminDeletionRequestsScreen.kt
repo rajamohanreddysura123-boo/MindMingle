@@ -31,14 +31,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.rajamohan.mindmingle.domain.model.DeletionRequest
 import com.rajamohan.mindmingle.domain.model.nowMillis
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminDeletionRequestsViewModel
+import com.rajamohan.mindmingle.presentation.common.component.AppDialog
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.PersonIcon
 import com.rajamohan.mindmingle.presentation.theme.Spacing
@@ -64,6 +65,7 @@ fun AdminDeletionRequestsScreen(onBack: () -> Unit) {
 
     var confirmFor by remember { mutableStateOf<DeletionRequest?>(null) }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         Column(
             modifier = Modifier
@@ -140,7 +142,8 @@ fun AdminDeletionRequestsScreen(onBack: () -> Unit) {
                                 waitingDays = request.waitingDaysAt(now),
                                 isPurging = uiState.purgingUid == request.uid,
                                 isBusy = uiState.purgingUid.isNotBlank(),
-                                onDeleteClick = { confirmFor = request }
+                                onDeleteClick = { confirmFor = request },
+                                modifier = Modifier.animateItem()
                             )
                         }
 
@@ -155,7 +158,11 @@ fun AdminDeletionRequestsScreen(onBack: () -> Unit) {
                                 waitingDays = request.waitingDaysAt(now),
                                 isPurging = false,
                                 isBusy = true,
-                                onDeleteClick = {}
+                                onDeleteClick = {},
+                                // Already handled — past history, not something waiting on
+                                // admin attention, so it recedes instead of matching a pending
+                                // row's full weight.
+                                modifier = Modifier.animateItem().alpha(0.55f)
                             )
                         }
                     }
@@ -173,6 +180,7 @@ fun AdminDeletionRequestsScreen(onBack: () -> Unit) {
             },
             onDismiss = { confirmFor = null }
         )
+    }
     }
 }
 
@@ -196,7 +204,8 @@ private fun DeletionRequestRow(
     waitingDays: Int,
     isPurging: Boolean,
     isBusy: Boolean,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -205,7 +214,7 @@ private fun DeletionRequestRow(
         shape = RoundedCornerShape(16.dp),
         color = colors.surface,
         shadowElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -286,7 +295,7 @@ private fun PurgeConfirmDialog(
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    Dialog(onDismissRequest = onDismiss) {
+    AppDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, shadowElevation = 8.dp) {
             Column(modifier = Modifier.widthIn(max = 460.dp).padding(24.dp)) {
                 Text(

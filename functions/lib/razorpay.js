@@ -33,13 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.razorpayWebhook = exports.adminCancelSubscription = exports.adminSetSubscription = exports.recordPaymentFailure = exports.getBillingHistory = exports.verifyRazorpayPayment = exports.createRazorpayOrder = void 0;
+exports.razorpayWebhook = exports.adminCancelSubscription = exports.adminSetSubscription = exports.recordPaymentFailure = exports.getBillingHistory = exports.verifyRazorpayPayment = exports.createPaymentLink = exports.createRazorpayOrder = void 0;
 const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("node:crypto"));
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const logger = __importStar(require("firebase-functions/logger"));
 const notifications_1 = require("./notifications");
+const invoices_1 = require("./invoices");
 const pricing_1 = require("./pricing");
 /**
  * Razorpay checkout for MindMingle+ (see PremiumScreen / PremiumViewModel on the client).
@@ -138,6 +139,17 @@ async function grantPlan(args) {
     }
     const subscriptionRef = db().collection("subscriptions").doc(args.uid);
     const paymentRef = subscriptionRef.collection("payments").doc(args.paymentId);
+    // Read outside the transaction: neither is contended, and a transaction may only read
+    // before it writes. Missing either just means a plainer invoice — never a blocked grant.
+    const [profileSnap, catalog, taxConfig] = await Promise.all([
+        db().collection("users").doc(args.uid).get(),
+        loadCatalog(),
+        (0, invoices_1.loadTaxConfig)(),
+    ]);
+    const profile = profileSnap.data();
+    const customerName = String(profile?.name ?? "").trim();
+    const customerEmail = String(profile?.email ?? "").trim();
+    const issuedAt = Date.now();
     const result = await db().runTransaction(async (tx) => {
         const [subscriptionSnap, paymentSnap] = await Promise.all([
             tx.get(subscriptionRef),
@@ -152,6 +164,27 @@ async function grantPlan(args) {
             };
         }
         const currentPeriodEnd = nextPeriodEnd(current?.currentPeriodEnd, days);
+        // Claimed inside the transaction, after the replay check above, so a payment that has
+        // already been granted (client verify racing the webhook for the same payment) never
+        // burns a second number — the sequence stays gapless.
+        const invoiceNumber = await (0, invoices_1.allocateInvoiceNumber)(tx, issuedAt);
+        const invoice = (0, invoices_1.buildInvoice)({
+            invoiceNumber,
+            uid: args.uid,
+            customerName,
+            customerEmail,
+            paymentId: args.paymentId,
+            orderId: args.orderId,
+            planId: args.planId,
+            amount: args.amount,
+            currency: args.currency,
+            country: args.country,
+            pricing: (0, invoices_1.pricingRowFor)(catalog, args.country),
+            taxConfig,
+            issuedAt,
+            periodEnd: currentPeriodEnd,
+        });
+        tx.set((0, invoices_1.invoiceRef)(args.uid, invoiceNumber), invoice);
         tx.set(subscriptionRef, {
             uid: args.uid,
             provider: "razorpay",
@@ -160,6 +193,7 @@ async function grantPlan(args) {
             currentPeriodEnd,
             lastPaymentId: args.paymentId,
             lastOrderId: args.orderId,
+            lastInvoiceNumber: invoiceNumber,
             billingCountry: args.country,
             billingCurrency: args.currency,
             updatedAt: Date.now(),
@@ -172,7 +206,8 @@ async function grantPlan(args) {
             currency: args.currency,
             country: args.country,
             source: args.source,
-            createdAt: Date.now(),
+            invoiceNumber,
+            createdAt: issuedAt,
         });
         return { planId: args.planId, currentPeriodEnd, granted: true };
     });
@@ -231,6 +266,99 @@ exports.createRazorpayOrder = (0, https_1.onCall)({ secrets: [razorpayKeyId, raz
         country,
         symbol: pricing.symbol,
         decimals: pricing.decimals,
+    };
+});
+/**
+ * Desktop's way in: a Razorpay-hosted payment page at a short URL.
+ *
+ * Razorpay ships checkout SDKs for Android and iOS and nothing for desktop JVM, so there is no
+ * sheet to present there. A payment link is the same purchase through a page Razorpay hosts —
+ * cards, netbanking, UPI and wallets — which the desktop app offers as a QR to scan with a phone
+ * and as a button that opens the browser.
+ *
+ * Nothing downstream changes. The link carries the same `notes` an order does, so when it is paid
+ * the existing razorpayWebhook recognises the uid and plan and grants through the same grantPlan
+ * as an in-app purchase. There is deliberately no second grant path and no "I have paid" button:
+ * the client is already streaming subscriptions/{uid} and unlocks itself when the webhook writes.
+ */
+/** How long a desktop payment link stays payable. */
+const LINK_TTL_SECONDS = 30 * 60;
+exports.createPaymentLink = (0, https_1.onCall)({ secrets: [razorpayKeyId, razorpayKeySecret] }, async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+        throw new https_1.HttpsError("unauthenticated", "Sign in before starting a payment");
+    }
+    const planId = String(request.data?.planId ?? "");
+    if (!pricing_1.PLAN_DAYS[planId]) {
+        throw new https_1.HttpsError("invalid-argument", "Unknown plan");
+    }
+    const catalog = await loadCatalog();
+    if (!catalog.enabled) {
+        throw new https_1.HttpsError("failed-precondition", "Upgrades are currently unavailable");
+    }
+    const country = await resolveCountry(uid, catalog, String(request.data?.countryHint ?? ""));
+    const pricing = (0, pricing_1.pricingFor)(catalog, country);
+    if (!pricing || !(0, pricing_1.isValidPricing)(pricing)) {
+        throw new https_1.HttpsError("failed-precondition", "No price is configured for your country");
+    }
+    const amount = planId === "plus_annual" ? pricing.annual : pricing.monthly;
+    // Prefills the hosted page. Both are optional to Razorpay; a blank profile just means the
+    // user types their own email on the payment page.
+    const profile = (await db().collection("users").doc(uid).get()).data() ?? {};
+    const customerName = String(profile.name ?? "").trim();
+    const customerEmail = String(profile.email ?? "").trim();
+    // Half an hour. Long enough to find a phone and open a UPI app, short enough that a link
+    // abandoned on a laptop cannot be paid tomorrow by someone who has already bought on mobile.
+    const expireBy = Math.floor(Date.now() / 1000) + LINK_TTL_SECONDS;
+    const link = await razorpayFetch("/payment_links", {
+        method: "POST",
+        body: {
+            amount,
+            currency: pricing.currency,
+            description: `MindMingle+ ${planId === "plus_annual" ? "annual" : "monthly"}`,
+            expire_by: expireBy,
+            reference_id: `mm_${uid}_${Date.now()}`.slice(0, 40),
+            customer: {
+                name: customerName || undefined,
+                email: customerEmail || undefined,
+            },
+            // Razorpay will email/SMS the link itself if asked; it is not asked. The user is looking
+            // at the QR right now, and an unexpected payment email is alarming, not helpful.
+            notify: { sms: false, email: false },
+            reminder_enable: false,
+            notes: { uid, planId, country },
+        },
+    });
+    const linkId = String(link.id);
+    // The same trace an abandoned checkout leaves, so support can tell "never paid" from "paid and
+    // not granted" without reading the Razorpay dashboard.
+    await db()
+        .collection("subscriptions")
+        .doc(uid)
+        .collection("paymentAttempts")
+        .doc(linkId)
+        .set({
+        uid,
+        linkId,
+        planId,
+        country,
+        amount,
+        currency: pricing.currency,
+        status: "link_created",
+        source: "desktop-link",
+        createdAt: Date.now(),
+    }, { merge: true });
+    logger.info("payment link created", { uid, planId, linkId });
+    return {
+        linkId,
+        url: String(link.short_url),
+        amount: Number(amount),
+        currency: String(pricing.currency),
+        planId,
+        country,
+        symbol: pricing.symbol,
+        decimals: pricing.decimals,
+        expiresAt: expireBy * 1000,
     };
 });
 /**
@@ -327,6 +455,31 @@ exports.getBillingHistory = (0, https_1.onCall)(async (request) => {
         .orderBy("createdAt", "desc")
         .limit(50)
         .get();
+    // Declines, so a failed charge leaves a visible trace instead of vanishing — this collection
+    // previously only backed the "payment failed" email, never shown in either the user's own
+    // Orders & Billing or the admin payments view. "link_created" attempts are excluded on purpose:
+    // that status never flips to "paid" once the QR is actually scanned and paid, so including it
+    // would show every successful desktop payment a second time, permanently stuck as "pending".
+    const failedAttemptsSnap = await db()
+        .collection("subscriptions")
+        .doc(uid)
+        .collection("paymentAttempts")
+        .where("status", "==", "failed")
+        .orderBy("createdAt", "desc")
+        .limit(50)
+        .get();
+    // Invoices live in their own subcollection (see invoices.ts) so this never returned them —
+    // the client has always been able to render one, in a dialog that opens when a payment row is
+    // tapped, but that dialog never had anything to open: every payment showed with `invoice`
+    // resolving to null, so the tap did nothing on every platform. Reading them alongside the
+    // payments is what makes the row clickable at all.
+    const invoicesSnap = await db()
+        .collection("subscriptions")
+        .doc(uid)
+        .collection("invoices")
+        .orderBy("issuedAt", "desc")
+        .limit(50)
+        .get();
     return {
         uid,
         planId: String(subscription?.planId ?? ""),
@@ -334,17 +487,75 @@ exports.getBillingHistory = (0, https_1.onCall)(async (request) => {
         currentPeriodEnd: Number(subscription?.currentPeriodEnd ?? 0),
         billingCountry: String(subscription?.billingCountry ?? ""),
         billingCurrency: String(subscription?.billingCurrency ?? ""),
-        payments: paymentsSnap.docs.map((doc) => {
+        payments: [
+            ...paymentsSnap.docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    paymentId: String(data.paymentId ?? doc.id),
+                    orderId: String(data.orderId ?? ""),
+                    planId: String(data.planId ?? ""),
+                    amount: Number(data.amount ?? 0),
+                    currency: String(data.currency ?? ""),
+                    country: String(data.country ?? ""),
+                    source: String(data.source ?? ""),
+                    createdAt: Number(data.createdAt ?? 0),
+                    status: "success",
+                    reason: "",
+                };
+            }),
+            // No amount/currency on a decline — recordPaymentFailure never captured a charge to read
+            // one from. The row still earns its place: a plan and a reason are what admin needs to see.
+            ...failedAttemptsSnap.docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    paymentId: String(data.orderId ?? doc.id),
+                    orderId: String(data.orderId ?? doc.id),
+                    planId: String(data.planId ?? ""),
+                    amount: 0,
+                    currency: "",
+                    country: "",
+                    source: "razorpay",
+                    createdAt: Number(data.createdAt ?? 0),
+                    status: "failed",
+                    reason: String(data.reason ?? ""),
+                };
+            }),
+        ].sort((a, b) => b.createdAt - a.createdAt),
+        // Field names match InvoiceDto (shared/.../BillingDto.kt) one for one — this is a straight
+        // passthrough of what buildInvoice already wrote, not a reshaping.
+        invoices: invoicesSnap.docs.map((doc) => {
             const data = doc.data();
             return {
-                paymentId: String(data.paymentId ?? doc.id),
-                orderId: String(data.orderId ?? ""),
+                invoiceNumber: String(data.invoiceNumber ?? doc.id),
+                paymentId: String(data.paymentId ?? ""),
                 planId: String(data.planId ?? ""),
-                amount: Number(data.amount ?? 0),
+                planLabel: String(data.planLabel ?? ""),
+                description: String(data.description ?? ""),
+                subtotal: Number(data.subtotal ?? 0),
+                taxAmount: Number(data.taxAmount ?? 0),
+                total: Number(data.total ?? 0),
                 currency: String(data.currency ?? ""),
+                symbol: String(data.symbol ?? ""),
+                decimals: Number(data.decimals ?? 2),
                 country: String(data.country ?? ""),
-                source: String(data.source ?? ""),
-                createdAt: Number(data.createdAt ?? 0),
+                issuedAt: Number(data.issuedAt ?? 0),
+                periodEnd: Number(data.periodEnd ?? 0),
+                status: String(data.status ?? ""),
+                taxLabel: String(data.taxLabel ?? ""),
+                taxRate: Number(data.taxRate ?? 0),
+                taxComponents: Array.isArray(data.taxComponents)
+                    ? data.taxComponents.map((c) => ({
+                        label: String(c.label ?? ""),
+                        rate: Number(c.rate ?? 0),
+                        amount: Number(c.amount ?? 0),
+                    }))
+                    : [],
+                placeOfSupply: String(data.placeOfSupply ?? ""),
+                isExport: Boolean(data.isExport ?? false),
+                taxNote: String(data.taxNote ?? ""),
+                sellerLegalName: String(data.sellerLegalName ?? ""),
+                sellerAddress: String(data.sellerAddress ?? ""),
+                sellerTaxId: String(data.sellerTaxId ?? ""),
             };
         }),
     };

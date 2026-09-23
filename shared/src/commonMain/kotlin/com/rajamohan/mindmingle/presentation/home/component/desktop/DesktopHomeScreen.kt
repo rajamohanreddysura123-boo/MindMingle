@@ -1,9 +1,9 @@
 package com.rajamohan.mindmingle.presentation.home.component.desktop
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,10 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -30,27 +27,27 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import com.rajamohan.mindmingle.domain.model.GeoDistance
 import com.rajamohan.mindmingle.domain.model.User
 import com.rajamohan.mindmingle.presentation.account.component.AccountSettingsScreen
 import com.rajamohan.mindmingle.presentation.anonymous.component.desktop.DesktopAnonymousChatScreen
 import com.rajamohan.mindmingle.presentation.chat.component.desktop.DesktopChatScreen
 import com.rajamohan.mindmingle.presentation.common.component.LogoutConfirmDialog
 import com.rajamohan.mindmingle.presentation.common.icon.ChatBubbleIcon
+import com.rajamohan.mindmingle.presentation.common.icon.ChevronDownIcon
+import com.rajamohan.mindmingle.presentation.common.icon.CrossIcon
 import com.rajamohan.mindmingle.presentation.common.icon.HeartIcon
 import com.rajamohan.mindmingle.presentation.common.icon.LogoutIcon
 import com.rajamohan.mindmingle.presentation.common.icon.MaskIcon
@@ -58,8 +55,12 @@ import com.rajamohan.mindmingle.presentation.common.icon.PersonIcon
 import com.rajamohan.mindmingle.presentation.common.icon.SparkleBurstIcon
 import com.rajamohan.mindmingle.presentation.common.icon.TelescopeIcon
 import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
+import androidx.compose.foundation.layout.heightIn
+import com.rajamohan.mindmingle.presentation.common.component.AppDialog
 import com.rajamohan.mindmingle.presentation.home.component.mobile.DistanceLine
+import com.rajamohan.mindmingle.presentation.home.component.mobile.ProfileDetailScreen
 import com.rajamohan.mindmingle.presentation.home.component.mobile.FilterSheet
+import com.rajamohan.mindmingle.presentation.home.component.mobile.PhotoProgressBar
 import com.rajamohan.mindmingle.presentation.home.component.mobile.PremiumBadge
 import com.rajamohan.mindmingle.presentation.home.viewmodel.HomeEvent
 import com.rajamohan.mindmingle.presentation.home.viewmodel.HomeViewModel
@@ -99,6 +100,10 @@ fun DesktopHomeScreen(
     var showAccountSettings by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
+    // Bumped whenever Edit Profile actually saves something, so the Profile tab reloads on
+    // return rather than showing whatever it had cached from before the edit.
+    var profileRefreshToken by remember { mutableStateOf(0) }
+
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         if (showPremium) {
             DesktopPremiumScreen(uid = uid, onBack = { showPremium = false })
@@ -111,7 +116,10 @@ fun DesktopHomeScreen(
                 email = userEmail,
                 isEditMode = true,
                 onBack = { showEditProfile = false },
-                onProfileSaved = { showEditProfile = false }
+                onProfileSaved = {
+                    showEditProfile = false
+                    profileRefreshToken++
+                }
             )
             return@Surface
         }
@@ -147,7 +155,12 @@ fun DesktopHomeScreen(
                         uid = uid,
                         onUpgradeClick = { showPremium = true }
                     )
-                    DesktopNavTab.Likes -> DesktopLikesScreen(uid = uid)
+                    DesktopNavTab.Likes -> DesktopLikesScreen(
+                        uid = uid,
+                        // Liking back opens the conversation, so the wall hands the tab over
+                        // rather than leaving the user to find it themselves.
+                        onOpenChat = { activeTab = DesktopNavTab.Chat }
+                    )
                     DesktopNavTab.Chat -> DesktopChatScreen(uid = uid)
                     DesktopNavTab.Anonymous -> DesktopAnonymousChatScreen(uid = uid)
                     DesktopNavTab.Profile -> DesktopProfileScreen(
@@ -158,7 +171,10 @@ fun DesktopHomeScreen(
                         onUpgradeClick = { showPremium = true },
                         onEditProfileClick = { showEditProfile = true },
                         onOpenSupportClick = { showSupportChat = true },
-                        onOpenAccountSettingsClick = { showAccountSettings = true }
+                        onOpenAccountSettingsClick = { showAccountSettings = true },
+                        onLikesClick = { activeTab = DesktopNavTab.Likes },
+                        onChatsClick = { activeTab = DesktopNavTab.Chat },
+                        refreshToken = profileRefreshToken
                     )
                 }
             }
@@ -258,36 +274,21 @@ private fun DesktopDiscoverContent(uid: String, onUpgradeClick: () -> Unit = {})
     val uiState by viewModel.uiState.collectAsState()
     var connectedUids by remember { mutableStateOf(setOf<String>()) }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var detailProfile by remember { mutableStateOf<User?>(null) }
 
     LaunchedEffect(uid) {
         viewModel.onEvent(HomeEvent.LoadProfiles(uid))
     }
 
-    // The same sheet the phone uses. Desktop had no filters at all, which meant distance, country
-    // and district — the three MindMingle+ filters — were unreachable for anyone on a laptop, and
-    // a paying subscriber could not use what they had paid for. It is a Dialog, so it needs no
-    // desktop-specific layout to be usable at this size.
-    if (showFilterSheet) {
-        FilterSheet(
-            filters = uiState.filters,
-            canFilterByDistance = uiState.hasMyLocation,
-            onLoadDistricts = { countryCode -> viewModel.districtsFor(countryCode) },
-            isPremium = uiState.isPremium,
-            onApply = { newFilters ->
-                viewModel.onEvent(HomeEvent.ApplyFilters(newFilters))
-                showFilterSheet = false
-            },
-            onReset = { viewModel.onEvent(HomeEvent.ResetFilters) },
-            onUpgrade = {
-                showFilterSheet = false
-                onUpgradeClick()
-            },
-            onDismiss = { showFilterSheet = false }
-        )
-    }
-
     val visibleProfiles = uiState.profiles.filterNot { connectedUids.contains(it.uid) }
 
+    // Both overlays below (the filter sheet, the profile-detail popup) render as same-window
+    // AppDialog content rather than a platform Dialog — see AppDialog's doc for why: Compose
+    // Desktop's real Dialog window did not reliably forward mouse-wheel scroll to content inside
+    // it. That means each has to be the LAST child of a Box spanning the whole tab, which is what
+    // this wrapper is for; a platform Dialog needed no such positioning, since it was a separate
+    // window regardless of where in the tree it was composed.
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().safeContentPadding().padding(Spacing.desktopScreenPadding)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f)) {
@@ -341,61 +342,211 @@ private fun DesktopDiscoverContent(uid: String, onUpgradeClick: () -> Unit = {})
                 }
             }
             else -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 260.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(visibleProfiles, key = { it.uid }) { profile ->
+                // One card, centred, instead of a wall of small ones.
+                //
+                // The grid put twelve strangers on screen at 260dp each: too small for the photo to
+                // carry anyone, and it turned deciding into scanning. A single large card is what
+                // the phone shows and what the decision actually deserves, and it makes Pass mean
+                // the same thing on both platforms — the card leaves, the next one takes its place.
+                val profile = visibleProfiles.first()
+
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         DesktopDiscoverCard(
+                            onOpenDetails = { detailProfile = profile },
                             profile = profile,
                             distanceKm = uiState.distanceToKm(profile),
                             onConnect = {
                                 connectedUids = connectedUids + profile.uid
                                 viewModel.onEvent(HomeEvent.Connect(fromUid = uid, toUid = profile.uid))
-                            }
+                            },
+                            // The view model drops the profile from the list, so the card leaves
+                            // the wall without this screen keeping a second set of its own.
+                            onPass = { viewModel.onEvent(HomeEvent.PassProfile(profile.uid)) }
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = if (visibleProfiles.size > 1) {
+                                "${visibleProfiles.size - 1} more waiting"
+                            } else {
+                                "Last one for now"
+                            },
+                            style = typography.bodySmall,
+                            color = colors.onSurfaceVariant
                         )
                     }
                 }
             }
         }
     }
+
+    // The mobile detail screen already renders everything a profile holds — bio, interests,
+    // every profile-setup answer — so it is presented here rather than written a second time.
+    detailProfile?.let { profile ->
+        AppDialog(onDismissRequest = { detailProfile = null }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = colors.background,
+                shadowElevation = 18.dp,
+                modifier = Modifier.width(560.dp).heightIn(max = 760.dp)
+            ) {
+                ProfileDetailScreen(
+                    profile = profile,
+                    distanceKm = profile.distanceKm,
+                    onBack = { detailProfile = null }
+                )
+            }
+        }
+    }
+
+    // The same sheet the phone uses. Desktop had no filters at all, which meant distance, country
+    // and district — the three MindMingle+ filters — were unreachable for anyone on a laptop, and
+    // a paying subscriber could not use what they had paid for.
+    if (showFilterSheet) {
+        FilterSheet(
+            filters = uiState.filters,
+            canFilterByDistance = uiState.hasMyLocation,
+            onLoadDistricts = { countryCode -> viewModel.districtsFor(countryCode) },
+            isPremium = uiState.isPremium,
+            onApply = { newFilters ->
+                viewModel.onEvent(HomeEvent.ApplyFilters(newFilters))
+                showFilterSheet = false
+            },
+            onReset = { viewModel.onEvent(HomeEvent.ResetFilters) },
+            onUpgrade = {
+                showFilterSheet = false
+                onUpgradeClick()
+            },
+            onDismiss = { showFilterSheet = false }
+        )
+    }
+    }
 }
 
 /**
- * Grid card for the desktop Discover wall.
- *
- * Same visual language as the mobile deck card — per-uid gradient hero, experience pill, verified
- * badge, intent pill, interests — at grid scale. A person should look the same on both platforms;
- * before this the desktop card was a flat header and two lines of text and read as a different app.
- *
- * There is no Pass here on purpose: the desktop wall shows every profile at once rather than one
- * at a time, so there is nothing to advance past. Connecting removes the card from the wall.
+ * A round step control on the photo. Desktop users look for arrows; the click zones underneath
+ * cover everyone who reaches for the photo itself out of phone habit.
  */
 @Composable
-private fun DesktopDiscoverCard(profile: User, distanceKm: Double?, onConnect: () -> Unit) {
+private fun PhotoArrow(isForward: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.4f),
+        modifier = modifier.size(34.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            ChevronDownIcon(
+                color = Color.White,
+                // One glyph, turned: a left chevron is a down chevron rotated a quarter turn, and
+                // adding two more icon functions to draw the same shape would be silly.
+                modifier = Modifier
+                    .size(14.dp)
+                    .rotate(if (isForward) -90f else 90f)
+            )
+        }
+    }
+}
+
+/**
+ * The desktop Discover card: one person, centred, at a size worth looking at.
+ *
+ * Same visual language as the mobile deck card, and now the same shape of decision. It replaced a
+ * grid of 260dp tiles where the photo was too small to carry anyone and choosing had become
+ * scanning.
+ *
+ * Photos step with the arrows on the hero, or by clicking its left and right thirds — the same
+ * zones the phone uses. There is no horizontal swipe here because there is no drag to swipe with:
+ * on desktop, Pass and Connect are buttons.
+ *
+ * Both actions remove the card and the next profile takes the slot. Passing goes through
+ * PassProfile(uid) rather than the deck's position-based Pass, because this screen renders a list
+ * and not a cursor.
+ */
+@Composable
+private fun DesktopDiscoverCard(
+    profile: User,
+    distanceKm: Double?,
+    onConnect: () -> Unit,
+    onPass: () -> Unit,
+    onOpenDetails: () -> Unit = {}
+) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
+    val photos = profile.displayPhotoUrls
+    var photoIndex by remember(profile.uid) { mutableStateOf(0) }
+
+    fun step(forward: Boolean) {
+        if (photos.size < 2) return
+        photoIndex = if (forward) {
+            (photoIndex + 1) % photos.size
+        } else {
+            (photoIndex - 1 + photos.size) % photos.size
+        }
+    }
+
     Surface(
+        // The whole card opens the profile; the photo zones and the two buttons keep their own
+        // clicks, so nothing here fights for the same press.
+        onClick = onOpenDetails,
         shape = RoundedCornerShape(24.dp),
         color = colors.surface,
-        shadowElevation = 3.dp,
-        modifier = Modifier.height(392.dp)
+        shadowElevation = 8.dp,
+        modifier = Modifier.width(420.dp).height(620.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Desktop shows the first photo only: the grid puts several cards on screen at once,
-            // and per-card photo stepping there would be a lot of controls competing for a click.
-            // The whole set is on the profile itself.
-            Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+            Box(modifier = Modifier.fillMaxWidth().height(380.dp)) {
                 RemoteProfileImage(
-                    url = profile.displayPhotoUrls.firstOrNull().orEmpty(),
+                    url = photos.getOrNull(photoIndex).orEmpty(),
                     uid = profile.uid,
                     contentDescription = profile.name.ifBlank { "Profile photo" },
-                    placeholderIconSize = 48.dp,
+                    placeholderIconSize = 72.dp,
                     modifier = Modifier.fillMaxSize()
                 )
+
+                if (photos.size > 1) {
+                    // Click zones first, arrows on top of them: the zones are what a phone user
+                    // reaches for out of habit, the arrows are what a mouse user looks for.
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable { step(forward = false) }
+                        )
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight())
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable { step(forward = true) }
+                        )
+                    }
+
+                    PhotoArrow(
+                        isForward = false,
+                        onClick = { step(forward = false) },
+                        modifier = Modifier.align(Alignment.CenterStart).padding(10.dp)
+                    )
+                    PhotoArrow(
+                        isForward = true,
+                        onClick = { step(forward = true) },
+                        modifier = Modifier.align(Alignment.CenterEnd).padding(10.dp)
+                    )
+
+                    PhotoProgressBar(
+                        count = photos.size,
+                        activeIndex = photoIndex,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -506,20 +657,48 @@ private fun DesktopDiscoverCard(profile: User, distanceKm: Double?, onConnect: (
                 }
             }
 
-            Surface(
-                onClick = onConnect,
-                shape = RoundedCornerShape(0.dp),
-                color = colors.primary,
-                modifier = Modifier.fillMaxWidth().height(44.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxSize()
+            // Pass sits beside Connect rather than on the card as a corner "x": the wall is
+            // browsed with a mouse, and a dismiss that only appears on hover is a dismiss most
+            // people never find. It is the quieter of the two by weight, not by size — skipping
+            // is as ordinary an action here as connecting.
+            Row(modifier = Modifier.fillMaxWidth().height(44.dp)) {
+                Surface(
+                    onClick = onPass,
+                    shape = RoundedCornerShape(0.dp),
+                    color = colors.surfaceVariant,
+                    modifier = Modifier.weight(1f).fillMaxHeight()
                 ) {
-                    ChatBubbleIcon(color = colors.onPrimary, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Connect", style = typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.onPrimary)
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        CrossIcon(color = colors.onSurfaceVariant, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Pass",
+                            style = typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Surface(
+                    onClick = onConnect,
+                    shape = RoundedCornerShape(0.dp),
+                    color = colors.primary,
+                    modifier = Modifier.weight(1.4f).fillMaxHeight()
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        ChatBubbleIcon(color = colors.onPrimary, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "Connect", style = typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.onPrimary)
+                    }
                 }
             }
         }

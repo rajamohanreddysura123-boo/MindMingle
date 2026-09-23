@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.rajamohan.mindmingle.domain.model.Invoice
 import com.rajamohan.mindmingle.domain.model.PaymentRecord
 import com.rajamohan.mindmingle.presentation.billing.InvoiceDetailDialog
@@ -43,7 +44,7 @@ import com.rajamohan.mindmingle.domain.model.PremiumPlan
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminUserDetailViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import com.rajamohan.mindmingle.presentation.common.icon.CrossIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -115,15 +116,15 @@ fun AdminUserDetailScreen(
                 ) {
                     Column(modifier = Modifier.padding(24.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(CircleShape)
-                                    .background(colors.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                DeveloperAvatarIcon(color = colors.primary, modifier = Modifier.size(32.dp))
-                            }
+                            // An admin deciding whether to disable or delete an account should be
+                            // looking at the same photo everyone else in the app sees.
+                            RemoteProfileImage(
+                                url = user.displayPhotoUrls.firstOrNull().orEmpty(),
+                                uid = user.uid,
+                                contentDescription = user.name.ifBlank { "Profile photo" },
+                                placeholderIconSize = 32.dp,
+                                modifier = Modifier.size(64.dp).clip(CircleShape)
+                            )
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
                                 Text(
@@ -398,16 +399,37 @@ private fun SubscriptionPanel(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = payment.plan?.label ?: payment.planId,
+                                        style = typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.onSurface
+                                    )
+                                    if (payment.isFailed) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = colors.errorContainer
+                                        ) {
+                                            Text(
+                                                text = "Failed",
+                                                style = typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.onErrorContainer,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
-                                    text = payment.plan?.label ?: payment.planId,
-                                    style = typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.onSurface
-                                )
-                                Text(
-                                    text = "${payment.dateLabel} · ${payment.source} · ${payment.paymentId}",
+                                    text = if (payment.isFailed) {
+                                        "${payment.dateLabel}${if (payment.reason.isNotBlank()) " · ${payment.reason}" else ""}"
+                                    } else {
+                                        "${payment.dateLabel} · ${payment.source} · ${payment.paymentId}"
+                                    },
                                     style = typography.bodySmall,
-                                    color = colors.onSurfaceVariant
+                                    color = if (payment.isFailed) colors.error else colors.onSurfaceVariant
                                 )
                                 if (invoice != null) {
                                     Text(
@@ -422,7 +444,7 @@ private fun SubscriptionPanel(
                                 text = payment.amountLabel(),
                                 style = typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.onSurface
+                                color = if (payment.isFailed) colors.onSurfaceVariant else colors.onSurface
                             )
                         }
                     }
@@ -470,7 +492,10 @@ private fun DeleteConfirmDialog(
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    Dialog(onDismissRequest = { if (!isDeleting) onDismiss() }) {
+    Dialog(
+        onDismissRequest = { if (!isDeleting) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = colors.surface,

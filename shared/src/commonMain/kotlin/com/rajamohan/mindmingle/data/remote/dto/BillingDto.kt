@@ -11,7 +11,9 @@ data class PaymentRecordDto(
     val currency: String = "",
     val country: String = "",
     val source: String = "",
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    val status: String = "success",
+    val reason: String = ""
 )
 
 /**

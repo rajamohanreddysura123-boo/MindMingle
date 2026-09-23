@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyEmailOtp = exports.requestEmailOtp = exports.subscriptionReminders = exports.onSupportMessageCreated = exports.onMatchCreated = exports.onLikeReceived = exports.onChatMessageCreated = exports.adminSubscriberStats = exports.adminListSubscribers = exports.adminCancelSubscription = exports.adminSetSubscription = exports.recordPaymentFailure = exports.getBillingHistory = exports.razorpayWebhook = exports.verifyRazorpayPayment = exports.createRazorpayOrder = void 0;
+exports.verifyEmailOtp = exports.requestEmailOtp = exports.subscriptionReminders = exports.onSupportMessageCreated = exports.onMatchCreated = exports.onLikeReceived = exports.onChatMessageCreated = exports.adminSubscriberStats = exports.adminListSubscribers = exports.adminCancelSubscription = exports.adminSetSubscription = exports.recordPaymentFailure = exports.getBillingHistory = exports.razorpayWebhook = exports.verifyRazorpayPayment = exports.createPaymentLink = exports.createRazorpayOrder = void 0;
 // First, and deliberately so: it pins the region for every function defined below, including
 // the ones re-exported from ./razorpay and ./notifications.
 require("./options");
@@ -43,6 +43,7 @@ admin.initializeApp();
 const db = admin.firestore();
 var razorpay_1 = require("./razorpay");
 Object.defineProperty(exports, "createRazorpayOrder", { enumerable: true, get: function () { return razorpay_1.createRazorpayOrder; } });
+Object.defineProperty(exports, "createPaymentLink", { enumerable: true, get: function () { return razorpay_1.createPaymentLink; } });
 Object.defineProperty(exports, "verifyRazorpayPayment", { enumerable: true, get: function () { return razorpay_1.verifyRazorpayPayment; } });
 Object.defineProperty(exports, "razorpayWebhook", { enumerable: true, get: function () { return razorpay_1.razorpayWebhook; } });
 Object.defineProperty(exports, "getBillingHistory", { enumerable: true, get: function () { return razorpay_1.getBillingHistory; } });

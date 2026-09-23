@@ -21,6 +21,7 @@ import com.rajamohan.mindmingle.data.remote.dto.NotificationPrefsDto
 import com.rajamohan.mindmingle.data.remote.dto.PaymentDetailsRequestDto
 import com.rajamohan.mindmingle.data.remote.dto.PlanCatalogDto
 import com.rajamohan.mindmingle.data.remote.dto.CreateOrderResponseDto
+import com.rajamohan.mindmingle.data.remote.dto.CreatePaymentLinkResponseDto
 import com.rajamohan.mindmingle.data.remote.dto.LikeDto
 import com.rajamohan.mindmingle.data.remote.dto.ConversationDto
 import com.rajamohan.mindmingle.data.remote.dto.MessageDto
@@ -223,8 +224,13 @@ internal class MindMingleFirebaseProvider {
             .document(fromUid).set(like)
 
         // The other direction has to already exist for chat to open — this is the whole gate.
-        val likeBack = firestore.collection("likes").document(toUid).collection("sentTo")
-            .document(fromUid).get()
+        // Read from fromUid's OWN incomingLikes mirror, not toUid's "sentTo" list: rules only let
+        // a user read their own likes/{uid}/sentTo, so checking toUid's copy as fromUid was always
+        // PERMISSION_DENIED (caught, silently returned false) and mutual likes never opened a chat.
+        // incomingLikes/{fromUid}/from/{toUid} exists iff toUid already liked fromUid — same fact,
+        // owned by the caller.
+        val likeBack = firestore.collection("incomingLikes").document(fromUid).collection("from")
+            .document(toUid).get()
         if (!likeBack.exists) return false
 
         val conversationId = conversationIdFor(fromUid, toUid)
@@ -238,6 +244,7 @@ internal class MindMingleFirebaseProvider {
         // reading either profile, and so a conversation survives the other person deleting their
         // account (it renders as "Unknown user" rather than disappearing).
         val other = getUserById(toUid)
+        val createdAtMillis = nowMillis()
         firestore.collection("conversations").document(conversationId)
             .set(
                 ConversationDto(
@@ -250,7 +257,13 @@ internal class MindMingleFirebaseProvider {
                         fromUid to liker?.avatarUrl.orEmpty(),
                         toUid to other?.avatarUrl.orEmpty()
                     ),
-                    createdAt = nowMillis()
+                    createdAt = createdAtMillis,
+                    // Must be a real value, not the null default: getConversationsPage orders by
+                    // this field, and kotlinx serialization (encodeDefaults=false) omits a field
+                    // entirely when left at its default — an omitted field is excluded from a
+                    // Firestore orderBy query outright, so the brand-new match never showed up in
+                    // the chat list until someone sent a first message and set it via update().
+                    lastMessageAt = Timestamp(seconds = createdAtMillis / 1000L, nanoseconds = 0)
                 )
             )
         return true
@@ -531,6 +544,13 @@ internal class MindMingleFirebaseProvider {
         return functions.httpsCallable("createRazorpayOrder")
             .invoke(CreateOrderRequestDto(planId = planId, countryHint = countryHint))
             .data<CreateOrderResponseDto>()
+    }
+
+    /** Desktop's route to the same purchase: a Razorpay-hosted page instead of a native sheet. */
+    suspend fun createPaymentLink(planId: String, countryHint: String): CreatePaymentLinkResponseDto {
+        return functions.httpsCallable("createPaymentLink")
+            .invoke(CreateOrderRequestDto(planId = planId, countryHint = countryHint))
+            .data<CreatePaymentLinkResponseDto>()
     }
 
     /**

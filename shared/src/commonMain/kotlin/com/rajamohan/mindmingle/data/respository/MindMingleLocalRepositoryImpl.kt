@@ -72,6 +72,23 @@ internal class MindMingleLocalRepositoryImpl(
         }
     }
 
+    override suspend fun getLastLocationAttemptAt(uid: String): Long {
+        return try {
+            mindMingleDatabaseProvider.getLastLocationAttemptAt(uid)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0L
+        }
+    }
+
+    override suspend fun saveLastLocationAttemptAt(uid: String, millis: Long) {
+        try {
+            mindMingleDatabaseProvider.saveLastLocationAttemptAt(uid, millis)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override suspend fun saveDiscoverFilters(criteria: DiscoverFilterCriteria): Boolean {
         return try {
             mindMingleDatabaseProvider.saveDiscoverFilters(criteria = criteria)

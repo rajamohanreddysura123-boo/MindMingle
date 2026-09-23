@@ -8,6 +8,7 @@ import com.rajamohan.mindmingle.domain.model.CountryCodeRepository
 import com.rajamohan.mindmingle.domain.model.GeoDistance
 import com.rajamohan.mindmingle.domain.model.User
 import com.rajamohan.mindmingle.domain.model.nowMillis
+import com.rajamohan.mindmingle.domain.repository.MindMingleLocalRepository
 import com.rajamohan.mindmingle.domain.repository.MindMingleRemoteRepository
 import io.github.aakira.napier.Napier
 
@@ -25,14 +26,25 @@ import io.github.aakira.napier.Napier
  * commuter who opens the app twice an hour from two cities would keep the first fix all day on
  * age alone, and someone who never moves would never refresh a year-old fix on distance alone.
  *
+
  * ## What it falls back to
  * A refused permission, a disabled GPS or a timeout falls through to [LocationService], the IP
  * lookup that was the only source before this existed. It is far less accurate — an IP resolves to
  * the ISP's egress point — but a rough position keeps the deck working, and it is exactly what
  * every existing profile already has.
+ *
+ * ## Why a failed attempt still has to be remembered
+ * [needsRefresh] alone is not enough: it reads `locationUpdatedAt`, which only moves on a
+ * *successful* write. A provider outage or a rate limit (every IP-geolocation service here is
+ * free and keyless, so all of them cap requests per IP) would otherwise be retried on every single
+ * Discover open — indefinitely, since a failure never marks itself as tried — hammering whichever
+ * provider is still up until it fails too. [ATTEMPT_COOLDOWN_MILLIS] is a second, shorter, purely
+ * local throttle on the *attempt itself*, independent of whether it succeeds: `locationUpdatedAt`
+ * still governs how often a fresh fix is wanted, this just stops the retries in between.
  */
 class RefreshMyLocationUseCase(
-    private val repository: MindMingleRemoteRepository
+    private val repository: MindMingleRemoteRepository,
+    private val localRepository: MindMingleLocalRepository
 ) {
     private companion object {
         const val TAG = "RefreshMyLocation"
@@ -42,6 +54,9 @@ class RefreshMyLocationUseCase(
 
         /** Below this, rewriting the document would not change a single displayed distance. */
         const val MOVED_THRESHOLD_KM = 2.0
+
+        /** How long one failed (or successful) attempt buys before the next is allowed at all. */
+        const val ATTEMPT_COOLDOWN_MILLIS = 15 * 60 * 1000L
     }
 
     /**
@@ -54,6 +69,16 @@ class RefreshMyLocationUseCase(
         val stored = me.latitude?.let { lat -> me.longitude?.let { lng -> lat to lng } }
 
         if (!needsRefresh(me)) return stored
+
+        val now = nowMillis()
+        if (now - localRepository.getLastLocationAttemptAt(uid) < ATTEMPT_COOLDOWN_MILLIS) {
+            // Tried recently enough — successfully or not — that trying again now would only be
+            // hammering a provider that is either still down or still rate-limited.
+            return stored
+        }
+        // Marked before the attempt, not after: a slow or hung request must not leave the window
+        // open for a second screen open to fire a second attempt while the first is still in flight.
+        localRepository.saveLastLocationAttemptAt(uid, now)
 
         val reading = readDeviceLocation() ?: return stored
         val fresh = reading.first

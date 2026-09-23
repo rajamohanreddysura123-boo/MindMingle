@@ -9,6 +9,15 @@ internal sealed class HomeEvent {
     data class LoadProfiles(val uid: String) : HomeEvent()
     data class Connect(val fromUid: String, val toUid: String) : HomeEvent()
     data object Pass : HomeEvent()
+
+    /**
+     * Passing on one named profile rather than on whichever is on top.
+     *
+     * The deck advances by position, which is meaningless on the desktop wall — every profile is
+     * on screen at once, so "next" is not a thing. This takes the uid instead and removes that one
+     * person, leaving the rest of the wall where it is.
+     */
+    data class PassProfile(val uid: String) : HomeEvent()
     data class ApplyFilters(val filters: DiscoverFilters) : HomeEvent()
     data object ResetFilters : HomeEvent()
 

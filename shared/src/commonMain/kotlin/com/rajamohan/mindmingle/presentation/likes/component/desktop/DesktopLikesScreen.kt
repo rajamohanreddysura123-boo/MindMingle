@@ -26,12 +26,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
+import com.rajamohan.mindmingle.presentation.home.component.mobile.PremiumBadge
+import com.rajamohan.mindmingle.presentation.likes.viewmodel.LikesEvent
 import com.rajamohan.mindmingle.presentation.common.icon.EnvelopeIcon
 import com.rajamohan.mindmingle.presentation.likes.viewmodel.LikesViewModel
 import com.rajamohan.mindmingle.presentation.theme.Spacing
@@ -49,7 +51,7 @@ private fun paletteFor(uid: String): List<Color> =
 
 /** Wide adaptive grid — the mobile 2-column grid stretched to use the extra desktop width properly. */
 @Composable
-fun DesktopLikesScreen(uid: String) {
+fun DesktopLikesScreen(uid: String, onOpenChat: (otherUid: String) -> Unit = {}) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
@@ -109,34 +111,78 @@ fun DesktopLikesScreen(uid: String) {
                     ) {
                         items(uiState.entries, key = { it.user.uid }) { entry ->
                             val item = entry.user
-                            Surface(shape = RoundedCornerShape(22.dp), color = colors.surface, shadowElevation = 3.dp, modifier = Modifier.height(210.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(22.dp),
+                                color = colors.surface,
+                                shadowElevation = 3.dp,
+                                modifier = Modifier.height(292.dp)
+                            ) {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth().height(120.dp).background(Brush.linearGradient(paletteFor(item.uid))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(44.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
-                                        ) {
+                                    // A face, like every other surface in the app. This wall drew
+                                    // a gradient and a glyph, so a page of people who liked you
+                                    // was a page of identical tiles.
+                                    RemoteProfileImage(
+                                        url = item.displayPhotoUrls.firstOrNull().orEmpty(),
+                                        uid = item.uid,
+                                        contentDescription = item.name.ifBlank { "Profile photo" },
+                                        placeholderIconSize = 44.dp,
+                                        modifier = Modifier.fillMaxWidth().height(150.dp)
+                                    )
+
+                                    Column(modifier = Modifier.fillMaxWidth().weight(1f).padding(14.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
-                                                text = item.experienceLevel.ifBlank { "Dev" },
-                                                color = Color.White,
-                                                fontSize = 10.sp,
+                                                text = item.name.ifBlank { "Unknown user" },
+                                                style = typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                color = colors.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
+                                            if (item.isPremium) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                PremiumBadge(size = 15.dp)
+                                            }
                                         }
-                                    }
-                                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                                        Text(text = item.name, style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
+
                                         Text(
-                                            text = item.occupation,
+                                            text = listOf(item.occupation, item.experienceLevel)
+                                                .filter { it.isNotBlank() }
+                                                .joinToString(" · "),
                                             style = typography.bodySmall,
-                                            color = colors.onSurfaceVariant
+                                            color = colors.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
+
+                                        Spacer(modifier = Modifier.weight(1f))
+
+                                        // The actual point of the screen, and what it was missing:
+                                        // desktop could see who liked you and do nothing about it.
+                                        if (entry.isConnected) {
+                                            DesktopLikeAction(
+                                                label = "Message",
+                                                isPrimary = true,
+                                                onClick = { onOpenChat(item.uid) },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        } else {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                DesktopLikeAction(
+                                                    label = "Ignore",
+                                                    isPrimary = false,
+                                                    onClick = { viewModel.onEvent(LikesEvent.Ignore(item.uid)) },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                DesktopLikeAction(
+                                                    label = "Like back",
+                                                    isPrimary = true,
+                                                    onClick = { viewModel.onEvent(LikesEvent.LikeBack(item.uid)) },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -144,6 +190,32 @@ fun DesktopLikesScreen(uid: String) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** One action on a likes card. Same two weights the mobile list uses. */
+@Composable
+private fun DesktopLikeAction(
+    label: String,
+    isPrimary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isPrimary) colors.primary else colors.surfaceVariant.copy(alpha = 0.6f),
+        modifier = modifier.height(38.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (isPrimary) colors.onPrimary else colors.onSurface
+            )
         }
     }
 }

@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.core.media.decodeToImageBitmapOrNull
 import com.rajamohan.mindmingle.core.media.fetchImageBytes
@@ -427,7 +428,10 @@ fun PhoneNumberField(
             }
         }
 
-        Dialog(onDismissRequest = { isPickerOpen = false; searchQuery = "" }) {
+        Dialog(
+            onDismissRequest = { isPickerOpen = false; searchQuery = "" },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
             Surface(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
                 shape = RoundedCornerShape(20.dp),

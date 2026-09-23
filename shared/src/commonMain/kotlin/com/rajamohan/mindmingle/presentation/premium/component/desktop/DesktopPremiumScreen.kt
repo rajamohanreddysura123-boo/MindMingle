@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +87,10 @@ fun DesktopPremiumScreen(
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
+    // The QR sheet renders as a same-window AppDialog rather than a platform Dialog, so it has
+    // to be the LAST child of a Box spanning this screen — see AppDialog's doc for why a real
+    // Dialog window was the wrong tool here (it did not reliably forward mouse-wheel scroll).
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().safeContentPadding()) {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.desktopScreenPadding, vertical = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(onClick = onBack, shape = CircleShape, color = colors.surfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(40.dp)) {
@@ -224,6 +228,23 @@ fun DesktopPremiumScreen(
                 }
             }
         }
+
+        // Desktop has no checkout SDK, so a purchase started here becomes a hosted payment page
+        // shown as a QR. It dismisses itself: the subscription stream flips isPremium the moment
+        // the webhook grants the plan, and the sheet has nothing left to wait for.
+        uiState.paymentLink?.let { link ->
+            if (uiState.isPremium) {
+                viewModel.onEvent(PremiumEvent.DismissPaymentLink)
+            } else {
+                PaymentLinkSheet(
+                    link = link,
+                    planLabel = uiState.selectedPlan.label,
+                    priceLabel = uiState.priceLabel,
+                    onDismiss = { viewModel.onEvent(PremiumEvent.DismissPaymentLink) }
+                )
+            }
+        }
+    }
     }
 }
 

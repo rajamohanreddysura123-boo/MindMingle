@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.rajamohan.mindmingle.domain.model.UserCountryResolver
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminUserListViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -173,15 +173,13 @@ fun AdminUserListScreen(
                                         .padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .background(colors.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        DeveloperAvatarIcon(color = colors.primary, modifier = Modifier.size(22.dp))
-                                    }
+                                    RemoteProfileImage(
+                                        url = user.displayPhotoUrls.firstOrNull().orEmpty(),
+                                        uid = user.uid,
+                                        contentDescription = user.name.ifBlank { "Profile photo" },
+                                        placeholderIconSize = 22.dp,
+                                        modifier = Modifier.size(44.dp).clip(CircleShape)
+                                    )
 
                                     Spacer(modifier = Modifier.width(14.dp))
 

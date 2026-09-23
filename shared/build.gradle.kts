@@ -67,6 +67,7 @@ kotlin {
             // face (FaceDetector.android.kt). Android-only artifact; no ML Kit SDK exists for
             // iOS/desktop Kotlin targets, so those actuals skip the check (see FaceDetector.*.kt).
             implementation(libs.mlkit.face.detection)
+            implementation(libs.androidx.exifinterface)
             // Razorpay Checkout (MindMingle+ upgrade). Android-only artifact — iOS goes through
             // IosPaymentHost/RazorpayBridge.swift, desktop has no SDK at all.
             api(libs.razorpay.checkout)
@@ -101,6 +102,7 @@ kotlin {
             implementation(libs.napier)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor3)
+            implementation(libs.qrose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

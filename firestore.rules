@@ -301,7 +301,14 @@ service cloud.firestore {
     // included have no read access, since the whole point is that nobody can
     // reconstruct the conversation. Only the audit log below survives a session.
     match /anonymousSessions/{sessionId} {
-      allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+      // resource == null must come first: once the other side purges this doc
+      // (skip/leave/lost claim race), a live listener re-evaluates this rule
+      // against a deleted document. Dereferencing resource.data on a null
+      // resource throws inside the rule engine, which Firestore reports to
+      // the listener as PERMISSION_DENIED instead of an empty snapshot —
+      // this is what observePartnerPresence was hitting.
+      allow read: if isSignedIn() &&
+        (resource == null || request.auth.uid in resource.data.participants);
       allow create: if isSignedIn() &&
         request.auth.uid in request.resource.data.participants &&
         request.resource.data.participants.size() == 2;

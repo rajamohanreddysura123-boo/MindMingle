@@ -32,24 +32,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.rajamohan.mindmingle.domain.model.ChatConversation
 import com.rajamohan.mindmingle.domain.model.ChatMessage
 import com.rajamohan.mindmingle.presentation.chat.viewmodel.ChatEvent
 import com.rajamohan.mindmingle.presentation.chat.viewmodel.ChatViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.ChatBubbleIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.common.icon.SendIcon
 import com.rajamohan.mindmingle.presentation.common.icon.WaveIcon
 import org.koin.compose.viewmodel.koinViewModel
@@ -205,12 +203,13 @@ private fun DesktopConversationList(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier.size(44.dp).clip(CircleShape).background(Brush.linearGradient(chatPaletteFor(item.otherUid))),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(20.dp))
-                                }
+                                RemoteProfileImage(
+                                    url = item.otherUserAvatarUrl,
+                                    uid = item.otherUid,
+                                    contentDescription = item.displayName,
+                                    placeholderIconSize = 20.dp,
+                                    modifier = Modifier.size(44.dp).clip(CircleShape)
+                                )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
@@ -308,12 +307,13 @@ private fun DesktopChatThread(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(chatPaletteFor(conversation.otherUid))),
-                contentAlignment = Alignment.Center
-            ) {
-                DeveloperAvatarIcon(color = Color.White, modifier = Modifier.size(18.dp))
-            }
+            RemoteProfileImage(
+                url = conversation.otherUserAvatarUrl,
+                uid = conversation.otherUid,
+                contentDescription = conversation.displayName,
+                placeholderIconSize = 18.dp,
+                modifier = Modifier.size(40.dp).clip(CircleShape)
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(text = conversation.displayName, style = typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)

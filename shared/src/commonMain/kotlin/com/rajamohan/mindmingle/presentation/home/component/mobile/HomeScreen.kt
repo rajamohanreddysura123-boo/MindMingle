@@ -55,14 +55,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import kotlin.math.abs
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -85,7 +89,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.rajamohan.mindmingle.domain.model.OccupationRepository
 import com.rajamohan.mindmingle.domain.model.ProfileOptionsRepository
 import com.rajamohan.mindmingle.domain.model.GeoDistance
@@ -93,7 +96,6 @@ import com.rajamohan.mindmingle.domain.model.User
 import com.rajamohan.mindmingle.presentation.ads.SponsoredAdCard
 import com.rajamohan.mindmingle.presentation.anonymous.component.mobile.AnonymousChatScreen
 import com.rajamohan.mindmingle.presentation.chat.component.mobile.ChatScreen
-import com.rajamohan.mindmingle.presentation.common.icon.ChatBubbleIcon
 import androidx.compose.ui.text.TextStyle
 import com.rajamohan.mindmingle.presentation.common.icon.CheckBadgeIcon
 import com.rajamohan.mindmingle.presentation.common.icon.LocationPinIcon
@@ -119,6 +121,7 @@ import com.rajamohan.mindmingle.presentation.account.component.AccountSettingsSc
 import com.rajamohan.mindmingle.core.push.NotificationDestination
 import com.rajamohan.mindmingle.core.push.PendingDestination
 import com.rajamohan.mindmingle.presentation.notifications.AlertsViewModel
+import com.rajamohan.mindmingle.presentation.common.component.AppDialog
 import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.support.component.SupportChatScreen
 import com.rajamohan.mindmingle.presentation.theme.Spacing
@@ -182,6 +185,8 @@ private fun MobileHomeScreen(
     }
 
     var showAnonymousChat by remember { mutableStateOf(false) }
+    // A chat thread is full-screen messaging, not a tab — the bottom nav hides while one is open.
+    var chatThreadOpen by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
 
@@ -192,6 +197,11 @@ private fun MobileHomeScreen(
     var showAccountSettings by remember { mutableStateOf(false) }
 
     var detailTarget by remember { mutableStateOf<ProfileDetailTarget?>(null) }
+
+    // Bumped whenever Edit Profile actually saves something, so the Profile tab reloads on
+    // return rather than showing whatever it had cached from before the edit — the completeness
+    // bar in particular used to sit frozen across an edit for exactly this reason.
+    var profileRefreshToken by remember { mutableStateOf(0) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -208,7 +218,10 @@ private fun MobileHomeScreen(
                 email = userEmail,
                 isEditMode = true,
                 onBack = { showEditProfile = false },
-                onProfileSaved = { showEditProfile = false }
+                onProfileSaved = {
+                    showEditProfile = false
+                    profileRefreshToken++
+                }
             )
             return@Surface
         }
@@ -242,11 +255,12 @@ private fun MobileHomeScreen(
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
+            val reservedNavHeight = if (chatThreadOpen) 0.dp else bottomNavHeight
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = bottomNavHeight)
-                    .consumeWindowInsets(PaddingValues(bottom = bottomNavHeight))
+                    .padding(bottom = reservedNavHeight)
+                    .consumeWindowInsets(PaddingValues(bottom = reservedNavHeight))
             ) {
                 AnimatedContent(
                     targetState = activeNav,
@@ -276,7 +290,8 @@ private fun MobileHomeScreen(
                                     uid = uid,
                                     onOpenAnonymousChat = { showAnonymousChat = true },
                                     openConversationId = pendingConversationId,
-                                    onOpenConversationHandled = { pendingConversationId = "" }
+                                    onOpenConversationHandled = { pendingConversationId = "" },
+                                    onThreadOpenChanged = { chatThreadOpen = it }
                                 )
                             }
                         }
@@ -288,21 +303,26 @@ private fun MobileHomeScreen(
                             onUpgradeClick = { showPremium = true },
                             onEditProfileClick = { showEditProfile = true },
                             onOpenSupportClick = { showSupportChat = true },
-                            onOpenAccountSettingsClick = { showAccountSettings = true }
+                            onOpenAccountSettingsClick = { showAccountSettings = true },
+                            onLikesClick = { activeNav = 1 },
+                            onChatsClick = { activeNav = 2 },
+                            refreshToken = profileRefreshToken
                         )
                     }
                 }
             }
 
-            BottomNavBar(
-                activeNav = activeNav,
-                onNavSelect = { activeNav = it },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .onSizeChanged { size ->
-                        bottomNavHeight = with(density) { size.height.toDp() }
-                    }
-            )
+            if (!chatThreadOpen) {
+                BottomNavBar(
+                    activeNav = activeNav,
+                    onNavSelect = { activeNav = it },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .onSizeChanged { size ->
+                            bottomNavHeight = with(density) { size.height.toDp() }
+                        }
+                )
+            }
         }
     }
 }
@@ -555,28 +575,11 @@ private fun HomeFeedContent(
         viewModel.onEvent(HomeEvent.LoadProfiles(uid))
     }
 
-    if (showFilterSheet) {
-        FilterSheet(
-            filters = uiState.filters,
-            // No coordinates for the signed-in user means no distance to measure against.
-            canFilterByDistance = uiState.hasMyLocation,
-            onLoadDistricts = { countryCode -> viewModel.districtsFor(countryCode) },
-            isPremium = uiState.isPremium,
-            onApply = { newFilters ->
-                viewModel.onEvent(HomeEvent.ApplyFilters(newFilters))
-                showFilterSheet = false
-            },
-            // Reset stays on the sheet so the cleared state is visible; the deck behind it
-            // reloads immediately with unfiltered, randomly ordered profiles.
-            onReset = { viewModel.onEvent(HomeEvent.ResetFilters) },
-            onUpgrade = {
-                showFilterSheet = false
-                onUpgradeClick()
-            },
-            onDismiss = { showFilterSheet = false }
-        )
-    }
-
+    // The filter sheet renders as a same-window overlay (AppDialog) rather than a platform
+    // Dialog, so it has to be the LAST child of a Box that already spans the screen — Compose
+    // draws later Box children on top of earlier ones, which is what makes it read as an
+    // overlay instead of a block of content pushing the deck out of the layout.
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -655,6 +658,29 @@ private fun HomeFeedContent(
                 }
             }
         }
+    }
+
+    if (showFilterSheet) {
+        FilterSheet(
+            filters = uiState.filters,
+            // No coordinates for the signed-in user means no distance to measure against.
+            canFilterByDistance = uiState.hasMyLocation,
+            onLoadDistricts = { countryCode -> viewModel.districtsFor(countryCode) },
+            isPremium = uiState.isPremium,
+            onApply = { newFilters ->
+                viewModel.onEvent(HomeEvent.ApplyFilters(newFilters))
+                showFilterSheet = false
+            },
+            // Reset stays on the sheet so the cleared state is visible; the deck behind it
+            // reloads immediately with unfiltered, randomly ordered profiles.
+            onReset = { viewModel.onEvent(HomeEvent.ResetFilters) },
+            onUpgrade = {
+                showFilterSheet = false
+                onUpgradeClick()
+            },
+            onDismiss = { showFilterSheet = false }
+        )
+    }
     }
 }
 
@@ -975,6 +1001,21 @@ private fun ProfilePhotoHero(
     var photoIndex by remember(profile.uid) { mutableStateOf(0) }
     val currentPhoto = photos.getOrNull(photoIndex).orEmpty()
 
+    fun step(forward: Boolean) {
+        if (photos.size < 2) return
+        photoIndex = if (forward) {
+            (photoIndex + 1) % photos.size
+        } else {
+            (photoIndex - 1 + photos.size) % photos.size
+        }
+    }
+
+    // Vertical, not horizontal. Horizontal on this card is already pass and connect — the deck's
+    // own draggable owns it — so a sideways swipe for photos would mean every gesture is a guess
+    // about which one the user meant. Up and down are free, and the deck never uses them.
+    var dragAccumulator by remember(profile.uid) { mutableStateOf(0f) }
+    val photoDrag = rememberDraggableState { delta -> dragAccumulator += delta }
+
     Box(modifier = modifier) {
         RemoteProfileImage(
             url = currentPhoto,
@@ -1003,14 +1044,26 @@ private fun ProfilePhotoHero(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .draggable(
+                    state = photoDrag,
+                    orientation = Orientation.Vertical,
+                    enabled = photos.size > 1,
+                    onDragStopped = {
+                        // Swipe up for the next photo, down for the previous — the direction a
+                        // list moves under a finger. Below the threshold nothing happens, so a
+                        // slightly untidy tap is still a tap.
+                        if (abs(dragAccumulator) >= PhotoSwipeThresholdPx) {
+                            step(forward = dragAccumulator < 0)
+                        }
+                        dragAccumulator = 0f
+                    }
+                )
                 .pointerInput(profile.uid, photos.size) {
                     detectTapGestures { offset ->
                         val third = size.width / 3f
                         when {
-                            photos.size > 1 && offset.x < third ->
-                                photoIndex = (photoIndex - 1 + photos.size) % photos.size
-                            photos.size > 1 && offset.x > size.width - third ->
-                                photoIndex = (photoIndex + 1) % photos.size
+                            photos.size > 1 && offset.x < third -> step(forward = false)
+                            photos.size > 1 && offset.x > size.width - third -> step(forward = true)
                             else -> onOpenDetails()
                         }
                     }
@@ -1029,6 +1082,13 @@ private fun ProfilePhotoHero(
         }
     }
 }
+
+/**
+ * How far a vertical drag has to travel before it counts as a photo swipe. Generous, because the
+ * gesture competes with the deck's horizontal drag: a diagonal flick should read as a pass, not as
+ * an accidental photo change.
+ */
+private const val PhotoSwipeThresholdPx = 120f
 
 /** One segment per photo, the current one lit — the same cue every app in the category uses. */
 @Composable
@@ -1337,12 +1397,12 @@ internal fun FilterSheet(
         )
     }
 
-    Dialog(onDismissRequest = { onApply(currentSelection()) }) {
+    AppDialog(onDismissRequest = { onApply(currentSelection()) }) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = colors.surface,
             shadowElevation = 16.dp,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 640.dp)
+            modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().heightIn(max = 640.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(

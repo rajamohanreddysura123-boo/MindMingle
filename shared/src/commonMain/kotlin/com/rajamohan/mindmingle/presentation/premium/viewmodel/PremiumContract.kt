@@ -1,7 +1,7 @@
 package com.rajamohan.mindmingle.presentation.premium.viewmodel
 
-import com.rajamohan.mindmingle.core.payments.PaymentPlatform
 import com.rajamohan.mindmingle.domain.model.CountryPricing
+import com.rajamohan.mindmingle.domain.model.PaymentLink
 import com.rajamohan.mindmingle.domain.model.PlanCatalog
 import com.rajamohan.mindmingle.domain.model.PremiumPlan
 import com.rajamohan.mindmingle.domain.model.Subscription
@@ -12,6 +12,9 @@ internal sealed class PremiumEvent {
     data class Load(val uid: String) : PremiumEvent()
     data class SelectPlan(val plan: PremiumPlan) : PremiumEvent()
     data object Checkout : PremiumEvent()
+
+    /** Closes the payment sheet. The link stays payable until it expires on Razorpay's side. */
+    data object DismissPaymentLink : PremiumEvent()
     data object DismissError : PremiumEvent()
 }
 
@@ -21,6 +24,12 @@ internal data class PremiumUiState(
     val catalog: PlanCatalog? = null,
     val isLoadingPricing: Boolean = false,
     val isProcessing: Boolean = false,
+    /**
+     * A hosted payment page, shown where there is no checkout SDK — desktop. Non-null means the
+     * QR is on screen and the app is waiting for the webhook, not for the user to come back and
+     * confirm anything.
+     */
+    val paymentLink: PaymentLink? = null,
     val justUpgraded: Boolean = false,
     val error: String = ""
 ) {
@@ -46,8 +55,15 @@ internal data class PremiumUiState(
 
     val currency: String get() = pricing?.currency.orEmpty()
 
+    /**
+     * Whether a purchase can be started at all.
+     *
+     * It no longer asks whether a checkout SDK exists. Desktop buys through a Razorpay-hosted page
+     * instead of a native sheet, so the only questions left are whether upgrades are switched on
+     * and whether this country has a price.
+     */
     val isCheckoutAvailable: Boolean
-        get() = PaymentPlatform.isSupported && catalog?.enabled == true && pricing?.isValid == true
+        get() = catalog?.enabled == true && pricing?.isValid == true
 
     val canCheckout: Boolean get() = isCheckoutAvailable && !isProcessing && !isPremium
 }

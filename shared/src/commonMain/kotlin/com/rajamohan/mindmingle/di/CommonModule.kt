@@ -33,6 +33,7 @@ import com.rajamohan.mindmingle.domain.usecase.DeactivateMyAccountUseCase
 import com.rajamohan.mindmingle.domain.usecase.ListDeletionRequestsUseCase
 import com.rajamohan.mindmingle.domain.usecase.RequestAccountDeletionUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetBillingHistoryUseCase
+import com.rajamohan.mindmingle.domain.usecase.CreatePaymentLinkUseCase
 import com.rajamohan.mindmingle.domain.usecase.CreatePaymentOrderUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetPlanCatalogUseCase
 import com.rajamohan.mindmingle.domain.usecase.ResetPlanCatalogUseCase
@@ -220,6 +221,12 @@ val domainModule = module {
     }
 
     factory {
+        CreatePaymentLinkUseCase(
+            repository = get()
+        )
+    }
+
+    factory {
         CreatePaymentOrderUseCase(
             repository = get()
         )
@@ -323,7 +330,8 @@ val domainModule = module {
 
     factory {
         RefreshMyLocationUseCase(
-            repository = get()
+            repository = get(),
+            localRepository = get()
         )
     }
 
@@ -558,6 +566,7 @@ val presentationModule = module {
     factory {
         PremiumViewModel(
             createPaymentOrderUseCase = get(),
+            createPaymentLinkUseCase = get(),
             verifyPaymentUseCase = get(),
             recordPaymentFailureUseCase = get(),
             observeSubscriptionUseCase = get(),

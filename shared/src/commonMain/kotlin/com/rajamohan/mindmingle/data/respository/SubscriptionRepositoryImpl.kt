@@ -4,6 +4,7 @@ import com.rajamohan.mindmingle.data.remote.dto.PlanCatalogDto
 import com.rajamohan.mindmingle.data.remote.source.MindMingleFirebaseProvider
 import com.rajamohan.mindmingle.domain.model.BillingHistory
 import com.rajamohan.mindmingle.domain.model.CountryCodeRepository
+import com.rajamohan.mindmingle.domain.model.PaymentLink
 import com.rajamohan.mindmingle.domain.model.PaymentOrder
 import com.rajamohan.mindmingle.domain.model.PlanCatalog
 import com.rajamohan.mindmingle.domain.model.countryFromPhone
@@ -134,6 +135,17 @@ internal class SubscriptionRepositoryImpl(
             )
         } catch (e: Exception) {
             Napier.e(throwable = e, tag = TAG) { "createOrder failed" }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun createPaymentLink(plan: PremiumPlan, countryHint: String): Result<PaymentLink> {
+        return try {
+            Result.success(
+                mindMingleFirebaseProvider.createPaymentLink(planId = plan.id, countryHint = countryHint).toDomain()
+            )
+        } catch (e: Exception) {
+            Napier.e(throwable = e, tag = TAG) { "createPaymentLink failed" }
             Result.failure(e)
         }
     }

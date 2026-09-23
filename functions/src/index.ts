@@ -9,6 +9,7 @@ const db = admin.firestore();
 
 export {
   createRazorpayOrder,
+  createPaymentLink,
   verifyRazorpayPayment,
   razorpayWebhook,
   getBillingHistory,

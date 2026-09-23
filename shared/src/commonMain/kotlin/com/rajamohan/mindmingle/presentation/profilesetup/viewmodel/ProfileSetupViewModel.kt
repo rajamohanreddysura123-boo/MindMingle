@@ -7,6 +7,7 @@ import com.rajamohan.mindmingle.core.location.DeviceLocationResult
 import com.rajamohan.mindmingle.core.location.LocationService
 import com.rajamohan.mindmingle.core.location.PlaceNames
 import com.rajamohan.mindmingle.core.media.FaceDetector
+import com.rajamohan.mindmingle.core.media.ImageCompressor
 import com.rajamohan.mindmingle.core.media.ImagePicker
 import com.rajamohan.mindmingle.core.media.MAX_PROFILE_PHOTOS
 import com.rajamohan.mindmingle.domain.model.CountryCodeRepository
@@ -295,6 +296,12 @@ internal class ProfileSetupViewModel(
                 // and every implementation truncates, but a platform picker that ignored the count
                 // would otherwise push the profile over five.
                 val picked = pickedBytesList.take(remaining)
+                    // Downscaled and re-encoded before anything else touches them. A photo off a
+                    // modern phone is several megabytes and thousands of pixels wide, and the
+                    // largest place it is ever shown is a few hundred points — so the size is
+                    // paid for by the uploader's data, the storage bill and every viewer who
+                    // loads the deck, in exchange for detail nobody can see.
+                    .map { ImageCompressor.compress(it) }
 
                 // Only photos with a detectable face are allowed on a profile (FaceDetector.android.kt).
                 val withFace = picked.filter { FaceDetector.containsFace(it) }

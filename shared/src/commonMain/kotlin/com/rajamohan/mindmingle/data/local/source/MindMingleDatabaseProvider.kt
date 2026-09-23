@@ -12,6 +12,7 @@ internal class MindMingleDatabaseProvider(
         const val DISCOVER_FILTERS_KEY = "discover_filters"
         const val LAST_LIKE_ALERT_PREFIX = "last_like_alert_"
         const val LAST_MESSAGE_ALERT_PREFIX = "last_message_alert_"
+        const val LAST_LOCATION_ATTEMPT_PREFIX = "last_location_attempt_"
     }
 
     /** Tolerates criteria fields added in a later release rather than throwing away the whole stored set. */
@@ -57,6 +58,20 @@ internal class MindMingleDatabaseProvider(
     /** In seconds, matching the conversation row's own timestamp. */
     suspend fun getLastMessageAlertAt(uid: String): Long {
         return preferences.get("$LAST_MESSAGE_ALERT_PREFIX$uid", "", String::class).toLongOrNull() ?: 0L
+    }
+
+    /**
+     * When a location refresh was last *attempted* — success or failure — as opposed to
+     * `locationUpdatedAt` on the profile, which only moves on success. This is what stops a
+     * run of failed lookups (a rate-limited IP-geolocation provider, most often) from being
+     * retried on every single Discover open: see RefreshMyLocationUseCase.
+     */
+    suspend fun saveLastLocationAttemptAt(uid: String, millis: Long) {
+        preferences.update("$LAST_LOCATION_ATTEMPT_PREFIX$uid", millis.toString(), String::class)
+    }
+
+    suspend fun getLastLocationAttemptAt(uid: String): Long {
+        return preferences.get("$LAST_LOCATION_ATTEMPT_PREFIX$uid", "", String::class).toLongOrNull() ?: 0L
     }
 
     suspend fun saveDiscoverFilters(criteria: DiscoverFilterCriteria) {

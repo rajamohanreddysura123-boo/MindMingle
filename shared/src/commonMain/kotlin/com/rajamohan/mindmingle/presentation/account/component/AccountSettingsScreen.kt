@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.rajamohan.mindmingle.presentation.account.viewmodel.AccountSettingsViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
 import androidx.compose.material3.HorizontalDivider
@@ -459,7 +460,10 @@ private fun AccountActionDialog(
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, shadowElevation = 8.dp) {
             Column(modifier = Modifier.widthIn(max = 420.dp).padding(24.dp)) {
                 Text(
@@ -524,7 +528,10 @@ private fun AccountClosedDialog(title: String, body: String, onDismiss: () -> Un
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(shape = RoundedCornerShape(24.dp), color = colors.surface, shadowElevation = 8.dp) {
             Column(modifier = Modifier.widthIn(max = 420.dp).padding(24.dp)) {
                 Text(

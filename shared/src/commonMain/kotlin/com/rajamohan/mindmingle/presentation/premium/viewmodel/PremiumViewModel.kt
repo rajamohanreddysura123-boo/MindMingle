@@ -7,6 +7,7 @@ import com.rajamohan.mindmingle.core.payments.CheckoutResult
 import com.rajamohan.mindmingle.core.payments.PaymentPlatform
 import com.rajamohan.mindmingle.domain.model.PaymentOrder
 import com.rajamohan.mindmingle.domain.model.User
+import com.rajamohan.mindmingle.domain.usecase.CreatePaymentLinkUseCase
 import com.rajamohan.mindmingle.domain.usecase.CreatePaymentOrderUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetPlanCatalogUseCase
 import com.rajamohan.mindmingle.domain.usecase.GetUserProfileUseCase
@@ -22,6 +23,7 @@ import kotlinx.coroutines.launch
 
 internal class PremiumViewModel(
     private val createPaymentOrderUseCase: CreatePaymentOrderUseCase,
+    private val createPaymentLinkUseCase: CreatePaymentLinkUseCase,
     private val verifyPaymentUseCase: VerifyPaymentUseCase,
     private val recordPaymentFailureUseCase: RecordPaymentFailureUseCase,
     private val observeSubscriptionUseCase: ObserveSubscriptionUseCase,
@@ -41,6 +43,7 @@ internal class PremiumViewModel(
             is PremiumEvent.Load -> load(event.uid)
             is PremiumEvent.SelectPlan -> _uiState.update { it.copy(selectedPlan = event.plan) }
             is PremiumEvent.Checkout -> checkout()
+            is PremiumEvent.DismissPaymentLink -> _uiState.update { it.copy(paymentLink = null) }
             is PremiumEvent.DismissError -> _uiState.update { it.copy(error = "") }
         }
     }
@@ -86,17 +89,20 @@ internal class PremiumViewModel(
         val state = _uiState.value
         if (!state.canCheckout) return
 
-        if (!PaymentPlatform.isSupported) {
-            _uiState.update { it.copy(error = "Upgrade to MindMingle+ from the Android or iOS app") }
-            return
-        }
-
         if (state.pricing?.isValid != true) {
             _uiState.update { it.copy(error = "No price is configured for your country yet") }
             return
         }
 
         _uiState.update { it.copy(isProcessing = true, error = "") }
+
+        // No checkout SDK here — desktop. The purchase goes through a Razorpay-hosted page
+        // instead, offered as a QR to scan and a link to open. Nothing comes back to verify: the
+        // webhook grants the plan and the subscription stream below unlocks the screen by itself.
+        if (!PaymentPlatform.isSupported) {
+            viewModelScope.launch { startPaymentLink() }
+            return
+        }
 
         viewModelScope.launch {
             val order = createPaymentOrderUseCase(state.selectedPlan).getOrElse { error ->
@@ -121,6 +127,19 @@ internal class PremiumViewModel(
                 }
             }
         }
+    }
+
+    private suspend fun startPaymentLink() {
+        createPaymentLinkUseCase(_uiState.value.selectedPlan).fold(
+            onSuccess = { link ->
+                _uiState.update { it.copy(isProcessing = false, paymentLink = link, error = "") }
+            },
+            onFailure = { error ->
+                _uiState.update {
+                    it.copy(isProcessing = false, error = error.message ?: "Could not start checkout")
+                }
+            }
+        )
     }
 
     private suspend fun verify(result: CheckoutResult.Success) {

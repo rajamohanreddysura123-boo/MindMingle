@@ -39,7 +39,7 @@ import com.rajamohan.mindmingle.domain.model.Subscriber
 import com.rajamohan.mindmingle.domain.model.SubscriberStatusFilter
 import com.rajamohan.mindmingle.presentation.admin.viewmodel.AdminSubscriberListViewModel
 import com.rajamohan.mindmingle.presentation.common.icon.BackArrowIcon
-import com.rajamohan.mindmingle.presentation.common.icon.DeveloperAvatarIcon
+import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -295,15 +295,13 @@ private fun SubscriberRow(subscriber: Subscriber, onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(colors.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                DeveloperAvatarIcon(color = colors.primary, modifier = Modifier.size(22.dp))
-            }
+            RemoteProfileImage(
+                url = subscriber.photoUrl,
+                uid = subscriber.uid,
+                contentDescription = subscriber.name.ifBlank { "Profile photo" },
+                placeholderIconSize = 22.dp,
+                modifier = Modifier.size(44.dp).clip(CircleShape)
+            )
 
             Spacer(modifier = Modifier.width(14.dp))
 

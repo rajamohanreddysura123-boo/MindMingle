@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import com.rajamohan.mindmingle.presentation.welcome.component.desktop.DesktopWelcomeScreen
 import com.rajamohan.mindmingle.presentation.welcome.component.shared.GoogleLogoIcon
@@ -105,7 +106,10 @@ private fun GoogleSignInLoadingDialog() {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
-    Dialog(onDismissRequest = {}) {
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = colors.surface,
