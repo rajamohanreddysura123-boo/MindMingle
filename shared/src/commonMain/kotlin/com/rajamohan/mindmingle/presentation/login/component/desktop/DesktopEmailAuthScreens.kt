@@ -79,31 +79,23 @@ fun DesktopEmailSignInScreen(
     isSubmitting: Boolean = false,
     errorMessage: String = "",
     onRequestCode: (email: String) -> Unit,
-    onPasswordSubmit: (email: String, password: String, isNewAccount: Boolean) -> Unit,
+    onPasswordSubmit: (email: String, password: String, isNewAccount: Boolean) -> Unit = { _, _, _ -> },
     onBack: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var usePassword by remember { mutableStateOf(false) }
-    var isNewAccount by remember { mutableStateOf(false) }
-
     val isValidEmail = remember(email) { EmailRegex.matches(email.trim()) }
-    val canSubmit = if (usePassword) {
-        isValidEmail && password.length >= 6 && !isSubmitting
-    } else {
-        isValidEmail && !isSubmitting
-    }
+    val canSubmit = isValidEmail && !isSubmitting
 
     DesktopAuthShell(
         headline = "Sign in to MindMingle",
-        blurb = "Use your work or personal email. We'll send a six-digit code — no password to remember.",
+        blurb = "Use your personal or work email. We'll send a six-digit verification code — no password to remember.",
         onBack = onBack
     ) {
         Text(
-            text = if (usePassword && isNewAccount) "Create your account" else "Continue with email",
+            text = "Sign in with OTP",
             style = typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = colors.onSurface
@@ -112,11 +104,7 @@ fun DesktopEmailSignInScreen(
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = when {
-                usePassword && isNewAccount -> "Pick a password of at least 6 characters."
-                usePassword -> "Enter the password on your account."
-                else -> "We'll email you a code that expires in five minutes."
-            },
+            text = "We'll email you a 6-digit code that expires in five minutes.",
             style = typography.bodyMedium,
             color = colors.onSurfaceVariant
         )
@@ -130,81 +118,22 @@ fun DesktopEmailSignInScreen(
             keyboardType = KeyboardType.Email
         )
 
-        if (usePassword) {
-            Spacer(modifier = Modifier.height(12.dp))
-            DesktopAuthField(
-                value = password,
-                onValueChange = { password = it },
-                placeholder = "Password",
-                keyboardType = KeyboardType.Password,
-                isPassword = true
-            )
-        }
-
         if (errorMessage.isNotBlank()) {
             Spacer(modifier = Modifier.height(14.dp))
             Text(text = errorMessage, style = typography.bodySmall, color = colors.error)
         }
 
-        Spacer(modifier = Modifier.height(22.dp))
+        Spacer(modifier = Modifier.height(26.dp))
 
         DesktopAuthButton(
-            label = when {
-                usePassword && isNewAccount -> "Create account"
-                usePassword -> "Sign in"
-                else -> "Email me a code"
-            },
+            label = "Email me a code",
             enabled = canSubmit,
             isBusy = isSubmitting,
             onClick = {
                 if (!canSubmit) return@DesktopAuthButton
-                if (usePassword) {
-                    onPasswordSubmit(email.trim(), password, isNewAccount)
-                } else {
-                    onRequestCode(email.trim())
-                }
+                onRequestCode(email.trim())
             }
         )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.weight(1f).height(1.dp).background(colors.outline.copy(alpha = 0.25f)))
-            Text(
-                text = "or",
-                style = typography.bodySmall,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-            Box(modifier = Modifier.weight(1f).height(1.dp).background(colors.outline.copy(alpha = 0.25f)))
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        Text(
-            text = if (usePassword) "Email me a code instead" else "Use a password instead",
-            style = typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.primary,
-            modifier = Modifier.clickable(enabled = !isSubmitting) {
-                usePassword = !usePassword
-                password = ""
-            }
-        )
-
-        if (usePassword) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = if (isNewAccount) "Already have an account? Sign in" else "New here? Create an account",
-                style = typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.clickable(enabled = !isSubmitting) { isNewAccount = !isNewAccount }
-            )
-        }
     }
 }
 

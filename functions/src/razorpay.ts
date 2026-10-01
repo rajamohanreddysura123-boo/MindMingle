@@ -85,7 +85,8 @@ async function resolveCountry(uid: string, catalog: PlanCatalog, hint: string): 
 }
 
 async function isAdmin(uid: string): Promise<boolean> {
-  return (await db().collection("admins").doc(uid).get()).exists;
+  const doc = await db().collection("users").doc(uid).get();
+  return doc.get("userType") === "admin";
 }
 
 function authHeader(): string {

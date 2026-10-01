@@ -48,6 +48,22 @@ import com.rajamohan.mindmingle.presentation.common.component.RemoteProfileImage
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import org.koin.compose.viewmodel.koinViewModel
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+
+sealed interface AdminPendingAction {
+    data class GrantSubscription(val plan: PremiumPlan, val days: Int) : AdminPendingAction
+    data class CancelSubscription(val immediate: Boolean) : AdminPendingAction
+    data object ToggleDisabled : AdminPendingAction
+    data object DeleteAccount : AdminPendingAction
+    data object LiftBan : AdminPendingAction
+}
+
 @Composable
 fun AdminUserDetailScreen(
     uid: String,
@@ -60,14 +76,10 @@ fun AdminUserDetailScreen(
     val viewModel: AdminUserDetailViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
 
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<AdminPendingAction?>(null) }
 
     LaunchedEffect(uid) {
         viewModel.loadUser(uid)
-    }
-
-    LaunchedEffect(uiState.isDeleted) {
-        if (uiState.isDeleted) onUserDeleted()
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
@@ -116,8 +128,6 @@ fun AdminUserDetailScreen(
                 ) {
                     Column(modifier = Modifier.padding(24.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // An admin deciding whether to disable or delete an account should be
-                            // looking at the same photo everyone else in the app sees.
                             RemoteProfileImage(
                                 url = user.displayPhotoUrls.firstOrNull().orEmpty(),
                                 uid = user.uid,
@@ -179,32 +189,107 @@ fun AdminUserDetailScreen(
                     isMutating = uiState.isSubscriptionMutating,
                     payments = uiState.billing?.payments.orEmpty(),
                     invoiceFor = { paymentId -> uiState.billing?.invoiceFor(paymentId) },
-                    onGrantMonth = { viewModel.grantPlan(PremiumPlan.MONTHLY, 30) },
-                    onGrantYear = { viewModel.grantPlan(PremiumPlan.ANNUAL, 365) },
-                    onCancelAtPeriodEnd = { viewModel.cancelPlan(immediate = false) },
-                    onEndNow = { viewModel.cancelPlan(immediate = true) }
+                    onGrantMonth = {
+                        pendingAction = AdminPendingAction.GrantSubscription(PremiumPlan.MONTHLY, 30)
+                    },
+                    onGrantYear = {
+                        pendingAction = AdminPendingAction.GrantSubscription(PremiumPlan.ANNUAL, 365)
+                    },
+                    onCancelAtPeriodEnd = {
+                        pendingAction = AdminPendingAction.CancelSubscription(immediate = false)
+                    },
+                    onEndNow = {
+                        pendingAction = AdminPendingAction.CancelSubscription(immediate = true)
+                    }
                 )
 
+                // On-screen small status message for subscription actions
                 if (uiState.subscriptionMessage.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = uiState.subscriptionMessage, style = typography.bodySmall, color = colors.tertiary)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.tertiaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.tertiary)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = uiState.subscriptionMessage,
+                                style = typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.onTertiaryContainer
+                            )
+                        }
+                    }
+                }
+
+                // On-screen message for ban status
+                if (uiState.banMessage.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.primary)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = uiState.banMessage,
+                                style = typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.onPrimaryContainer
+                            )
+                        }
+                    }
                 }
 
                 if (uiState.error.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(text = uiState.error, style = typography.bodySmall, color = colors.error)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.errorContainer.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            CrossIcon(color = colors.error, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = uiState.error,
+                                style = typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.onErrorContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                if (uiState.banMessage.isNotBlank()) {
-                    Text(text = uiState.banMessage, style = typography.bodySmall, color = colors.primary)
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
-
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Surface(
-                        onClick = { viewModel.toggleDisabled() },
+                        onClick = { pendingAction = AdminPendingAction.ToggleDisabled },
                         enabled = !uiState.isMutating,
                         shape = RoundedCornerShape(16.dp),
                         color = colors.surfaceVariant.copy(alpha = 0.5f),
@@ -221,7 +306,7 @@ fun AdminUserDetailScreen(
                     }
 
                     Surface(
-                        onClick = { showDeleteConfirm = true },
+                        onClick = { pendingAction = AdminPendingAction.DeleteAccount },
                         enabled = !uiState.isMutating,
                         shape = RoundedCornerShape(16.dp),
                         color = colors.errorContainer.copy(alpha = 0.3f),
@@ -242,12 +327,8 @@ fun AdminUserDetailScreen(
                         }
                     }
 
-                    // Deleting an account leaves a bannedUids tombstone, because a client SDK
-                    // cannot remove somebody else's Firebase Auth record. This is the only way
-                    // back from that short of the Firebase Console — the repository call is a
-                    // no-op when no tombstone exists, so it is safe on any account.
                     Surface(
-                        onClick = { viewModel.unbanUser() },
+                        onClick = { pendingAction = AdminPendingAction.LiftBan },
                         enabled = !uiState.isMutating,
                         shape = RoundedCornerShape(16.dp),
                         color = colors.surfaceVariant.copy(alpha = 0.5f),
@@ -267,14 +348,108 @@ fun AdminUserDetailScreen(
         }
     }
 
-    if (showDeleteConfirm) {
-        DeleteConfirmDialog(
-            userName = uiState.user?.name.orEmpty(),
-            isDeleting = uiState.isMutating,
-            onConfirm = {
-                viewModel.deleteUser()
-            },
-            onDismiss = { showDeleteConfirm = false }
+    // Confirmation dialog before any admin action
+    pendingAction?.let { action ->
+        val userName = uiState.user?.name.orEmpty().ifBlank { "this user" }
+        when (action) {
+            is AdminPendingAction.GrantSubscription -> {
+                val isMonth = action.days == 30
+                AdminConfirmActionDialog(
+                    title = if (isMonth) "Grant 1 Month Subscription?" else "Grant 1 Year Subscription?",
+                    message = "Are you sure you want to grant ${if (isMonth) "30 days" else "1 year"} of ${action.plan.label} to $userName? This will be recorded in their order history as an admin grant.",
+                    confirmLabel = "Grant Plan",
+                    isDestructive = false,
+                    isLoading = uiState.isSubscriptionMutating,
+                    onConfirm = {
+                        val plan = action.plan
+                        val days = action.days
+                        pendingAction = null
+                        viewModel.grantPlan(plan, days)
+                    },
+                    onDismiss = { pendingAction = null }
+                )
+            }
+            is AdminPendingAction.CancelSubscription -> {
+                AdminConfirmActionDialog(
+                    title = if (action.immediate) "End Subscription Immediately?" else "Cancel at Period End?",
+                    message = if (action.immediate) {
+                        "Are you sure you want to end this subscription immediately? Premium features will be revoked and ads restored right away for $userName."
+                    } else {
+                        "Are you sure you want to cancel the subscription at period end? $userName will retain active benefits until ${uiState.planEndsLabel}."
+                    },
+                    confirmLabel = if (action.immediate) "End Now" else "Confirm Cancel",
+                    isDestructive = action.immediate,
+                    isLoading = uiState.isSubscriptionMutating,
+                    onConfirm = {
+                        val imm = action.immediate
+                        pendingAction = null
+                        viewModel.cancelPlan(imm)
+                    },
+                    onDismiss = { pendingAction = null }
+                )
+            }
+            is AdminPendingAction.ToggleDisabled -> {
+                val isDisabled = uiState.user?.isDisabled == true
+                AdminConfirmActionDialog(
+                    title = if (isDisabled) "Re-enable Account?" else "Disable Account?",
+                    message = if (isDisabled) {
+                        "Are you sure you want to re-enable $userName's account? They will be allowed to log in and use MindMingle."
+                    } else {
+                        "Are you sure you want to disable $userName's account? They will be prevented from logging in."
+                    },
+                    confirmLabel = if (isDisabled) "Re-enable" else "Disable",
+                    isDestructive = !isDisabled,
+                    isLoading = uiState.isMutating,
+                    onConfirm = {
+                        pendingAction = null
+                        viewModel.toggleDisabled()
+                    },
+                    onDismiss = { pendingAction = null }
+                )
+            }
+            is AdminPendingAction.DeleteAccount -> {
+                AdminConfirmActionDialog(
+                    title = "Delete this account?",
+                    message = "This permanently erases $userName's profile, likes, matches, and messages, and blocks the account from ever signing in again. This cannot be undone.",
+                    confirmLabel = "Delete",
+                    isDestructive = true,
+                    isLoading = uiState.isMutating,
+                    onConfirm = {
+                        pendingAction = null
+                        viewModel.deleteUser()
+                    },
+                    onDismiss = { pendingAction = null }
+                )
+            }
+            is AdminPendingAction.LiftBan -> {
+                AdminConfirmActionDialog(
+                    title = "Lift Ban on Account?",
+                    message = "Are you sure you want to lift the ban on $userName (${uiState.user?.uid.orEmpty()})? The banned tombstone will be removed and this user will be permitted to sign in again.",
+                    confirmLabel = "Lift Ban",
+                    isDestructive = false,
+                    isLoading = uiState.isMutating,
+                    onConfirm = {
+                        pendingAction = null
+                        viewModel.unbanUser()
+                    },
+                    onDismiss = { pendingAction = null }
+                )
+            }
+        }
+    }
+
+    // Success dialog once any admin action succeeds
+    if (uiState.successMessage.isNotBlank()) {
+        AdminSuccessDialog(
+            title = uiState.successTitle,
+            message = uiState.successMessage,
+            onDismiss = {
+                val wasDeleted = uiState.isDeleted
+                viewModel.dismissSuccessDialog()
+                if (wasDeleted) {
+                    onUserDeleted()
+                }
+            }
         )
     }
 }
@@ -483,9 +658,12 @@ private fun AdminActionChip(
 }
 
 @Composable
-private fun DeleteConfirmDialog(
-    userName: String,
-    isDeleting: Boolean,
+private fun AdminConfirmActionDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    isDestructive: Boolean = false,
+    isLoading: Boolean = false,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -493,55 +671,165 @@ private fun DeleteConfirmDialog(
     val typography = MaterialTheme.typography
 
     Dialog(
-        onDismissRequest = { if (!isDeleting) onDismiss() },
+        onDismissRequest = { if (!isLoading) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = colors.surface,
-            shadowElevation = 12.dp,
-            modifier = Modifier.widthIn(max = 420.dp)
+            shadowElevation = 16.dp,
+            modifier = Modifier.widthIn(max = 440.dp).padding(16.dp)
         ) {
-            Column(modifier = Modifier.padding(28.dp)) {
+            Column(modifier = Modifier.padding(26.dp)) {
                 Text(
-                    text = "Delete this account?",
+                    text = title,
                     style = typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = colors.onSurface
+                    color = if (isDestructive) colors.error else colors.onSurface
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "This permanently erases ${userName.ifBlank { "this user" }}'s profile, likes, matches, and messages, and blocks the account from ever signing in again. This cannot be undone.",
+                    text = message,
                     style = typography.bodyMedium,
-                    color = colors.onSurfaceVariant
+                    color = colors.onSurfaceVariant,
+                    lineHeight = 22.sp
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Surface(
                         onClick = onDismiss,
-                        enabled = !isDeleting,
+                        enabled = !isLoading,
                         shape = RoundedCornerShape(14.dp),
                         color = colors.surfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.weight(1f).height(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(text = "Cancel", style = typography.titleSmall, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                            Text(
+                                text = "Cancel",
+                                style = typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.onSurface
+                            )
                         }
                     }
                     Surface(
                         onClick = onConfirm,
-                        enabled = !isDeleting,
+                        enabled = !isLoading,
                         shape = RoundedCornerShape(14.dp),
-                        color = colors.error,
+                        color = if (isDestructive) colors.error else colors.primary,
                         modifier = Modifier.weight(1f).height(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            if (isDeleting) {
-                                CircularProgressIndicator(color = colors.onError, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    color = if (isDestructive) colors.onError else colors.onPrimary,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             } else {
-                                Text(text = "Delete", style = typography.titleSmall, fontWeight = FontWeight.Bold, color = colors.onError)
+                                Text(
+                                    text = confirmLabel,
+                                    style = typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDestructive) colors.onError else colors.onPrimary
+                                )
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminSuccessDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val typography = MaterialTheme.typography
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = colors.surface,
+            shadowElevation = 16.dp,
+            modifier = Modifier.widthIn(max = 420.dp).padding(16.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(28.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = colors.primary.copy(alpha = 0.12f),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Canvas(modifier = Modifier.size(28.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val path = Path().apply {
+                                moveTo(w * 0.22f, h * 0.52f)
+                                lineTo(w * 0.42f, h * 0.72f)
+                                lineTo(w * 0.78f, h * 0.28f)
+                            }
+                            drawPath(
+                                path = path,
+                                color = colors.primary,
+                                style = Stroke(
+                                    width = w * 0.13f,
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = title.ifBlank { "Success" },
+                    style = typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = message,
+                    style = typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 22.sp
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Surface(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.primary,
+                    modifier = Modifier.fillMaxWidth().height(46.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = "OK",
+                            style = typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.onPrimary
+                        )
                     }
                 }
             }

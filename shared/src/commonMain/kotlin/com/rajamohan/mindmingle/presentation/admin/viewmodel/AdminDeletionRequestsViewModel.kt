@@ -13,13 +13,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+internal data class DeletionSuccessDialogState(
+    val title: String,
+    val message: String
+)
+
 internal data class AdminDeletionRequestsUiState(
     val isLoading: Boolean = true,
     val requests: List<DeletionRequest> = emptyList(),
     /** uid currently being purged — the row shows a spinner and the rest stay clickable. */
     val purgingUid: String = "",
     val error: String = "",
-    val message: String = ""
+    val message: String = "",
+    val successDialog: DeletionSuccessDialogState? = null
 ) {
     val pending: List<DeletionRequest> get() = requests.filter { it.isPending }
 
@@ -66,12 +72,24 @@ internal class AdminDeletionRequestsViewModel(
             _uiState.update { it.copy(error = "No admin session — sign in again") }
             return
         }
+        val target = _uiState.value.requests.find { it.uid == uid }
+        val targetName = target?.name?.ifBlank { target.email.ifBlank { uid } } ?: uid
+
         _uiState.update { it.copy(purgingUid = uid, error = "", message = "") }
         viewModelScope.launch {
             try {
                 deleteUserCascadeUseCase(uid, adminUid).fold(
                     onSuccess = {
-                        _uiState.update { it.copy(purgingUid = "", message = "Account deleted") }
+                        _uiState.update {
+                            it.copy(
+                                purgingUid = "",
+                                message = "Account for $targetName successfully deleted.",
+                                successDialog = DeletionSuccessDialogState(
+                                    title = "Account Successfully Deleted",
+                                    message = "All profile data, chats, matches, photos, and records for $targetName have been permanently purged, and the account UID has been blocked."
+                                )
+                            )
+                        }
                         load()
                     },
                     onFailure = { error ->
@@ -85,5 +103,13 @@ internal class AdminDeletionRequestsViewModel(
                 _uiState.update { it.copy(purgingUid = "", error = e.message ?: "Delete failed") }
             }
         }
+    }
+
+    fun dismissSuccessDialog() {
+        _uiState.update { it.copy(successDialog = null) }
+    }
+
+    fun dismissMessage() {
+        _uiState.update { it.copy(message = "", error = "") }
     }
 }

@@ -123,30 +123,22 @@ private fun MindMingleEntryPointContent(isDesktopWidth: Boolean) {
                 )
             }
             is ScreenState.EmailInput -> {
-                val submitPassword: (String, String, Boolean) -> Unit = { email, password, isNewAccount ->
-                    authViewModel.onEvent(
-                        if (isNewAccount) {
-                            AuthEvent.EmailPasswordSignUp(email = email, password = password)
-                        } else {
-                            AuthEvent.EmailPasswordSignIn(email = email, password = password)
-                        }
-                    )
+                val requestCode: (String) -> Unit = { email ->
+                    authViewModel.onEvent(AuthEvent.RequestEmailOtp(email))
                 }
 
                 if (isDesktopWidth) {
-                    // Desktop leads with the mailed code; password stays available inside the screen.
                     DesktopEmailSignInScreen(
                         isSubmitting = authUiState.isLoading,
                         errorMessage = authUiState.error,
-                        onRequestCode = { email -> authViewModel.onEvent(AuthEvent.RequestEmailOtp(email)) },
-                        onPasswordSubmit = submitPassword,
+                        onRequestCode = requestCode,
                         onBack = { currentScreen = ScreenState.Onboarding }
                     )
                 } else {
                     EmailPasswordScreen(
                         isSubmitting = authUiState.isLoading,
                         errorMessage = authUiState.error,
-                        onSubmit = submitPassword,
+                        onRequestCode = requestCode,
                         onBack = { currentScreen = ScreenState.Onboarding }
                     )
                 }

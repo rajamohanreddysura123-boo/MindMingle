@@ -52,6 +52,7 @@ import org.jetbrains.compose.resources.painterResource
 import kotlin.math.roundToInt
 
 import com.rajamohan.mindmingle.data.remote.source.GoogleAuthLauncher
+import com.rajamohan.mindmingle.presentation.common.icon.EnvelopeIcon
 
 @Composable
 fun OnboardingScreen(
@@ -210,7 +211,7 @@ private fun MobileWelcomeScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Google first, email + password as the fallback — phone-number signup is retired.
+                // Passwordless sign-in: Google or Email OTP. Both access the exact same account.
                 Surface(
                     onClick = onGoogleSignInClick,
                     shape = RoundedCornerShape(50),
@@ -248,9 +249,15 @@ private fun MobileWelcomeScreen(
                         .fillMaxWidth()
                         .height(58.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        EnvelopeIcon(color = colors.onSurface, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Continue with Email",
+                            text = "Sign in with OTP",
                             style = typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.onSurface

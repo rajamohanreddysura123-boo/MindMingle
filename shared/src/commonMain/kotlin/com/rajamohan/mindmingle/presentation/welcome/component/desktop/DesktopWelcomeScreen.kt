@@ -12,9 +12,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -71,97 +73,103 @@ fun DesktopWelcomeScreen(
         modifier = Modifier.fillMaxSize(),
         color = colors.background
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 32.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // ── LEFT COLUMN: Desktop Brand & Call-To-Action (50% Width) ──
-            Column(
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isCompact = maxWidth < 960.dp
+            val hPadding = if (isCompact) 28.dp else 48.dp
+            val vPadding = if (isCompact) 20.dp else 32.dp
+            val spacing = if (isCompact) 24.dp else 40.dp
+
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(end = 40.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .fillMaxSize()
+                    .padding(horizontal = hPadding, vertical = vPadding),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Header Logo
-                com.rajamohan.mindmingle.presentation.theme.MindMingleHeaderLockup(
-                    iconSize = 44.dp
-                )
-
-                Column {
-                    // Widescreen Headline
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.ExtraBold)) {
-                                append("Find Your Next\n")
-                            }
-                            withStyle(SpanStyle(color = colors.primary, fontWeight = FontWeight.ExtraBold)) {
-                                append("Tech")
-                            }
-                            withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.ExtraBold)) {
-                                append(" Partner")
-                            }
-                        },
-                        style = typography.displayMedium,
-                        fontSize = 44.sp,
-                        lineHeight = 54.sp
+                // ── LEFT COLUMN: Desktop Brand & Call-To-Action (50% Width) ──
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(end = spacing),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Header Logo
+                    com.rajamohan.mindmingle.presentation.theme.MindMingleHeaderLockup(
+                        iconSize = if (isCompact) 38.dp else 44.dp
                     )
 
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Connect with top developers, engineers, and co-founders across the globe who speak your language. No photos required.",
-                        style = typography.bodyLarge,
-                        color = colors.onSurfaceVariant,
-                        fontSize = 17.sp,
-                        lineHeight = 26.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(36.dp))
-
-                    // Desktop Call-to-Action: draggable "swipe to get started" + email sign-in
-                    // (no working Google OAuth on JVM, see GoogleAuthLauncher.jvm.kt)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        GetStartedButton(
-                            onClick = onGetStartedClick,
-                            modifier = Modifier.width(280.dp),
-                            trackHeight = 60.dp,
-                            thumbSize = 48.dp
+                    Column {
+                        // Widescreen Headline
+                        Text(
+                            text = buildAnnotatedString {
+                                withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.ExtraBold)) {
+                                    append("Find Your Next\n")
+                                }
+                                withStyle(SpanStyle(color = colors.primary, fontWeight = FontWeight.ExtraBold)) {
+                                    append("Tech")
+                                }
+                                withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.ExtraBold)) {
+                                    append(" Partner")
+                                }
+                            },
+                            style = typography.displayMedium,
+                            fontSize = if (isCompact) 36.sp else 44.sp,
+                            lineHeight = if (isCompact) 44.sp else 54.sp
                         )
 
-                        EmailSignInButton(onClick = onEmailSignInClick)
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "Connect with top developers, engineers, and co-founders across the globe who speak your language. No photos required.",
+                            style = typography.bodyLarge,
+                            color = colors.onSurfaceVariant,
+                            fontSize = if (isCompact) 15.sp else 17.sp,
+                            lineHeight = if (isCompact) 22.sp else 26.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(28.dp))
+
+                        // Desktop Call-to-Action: draggable "swipe to get started" + email sign-in
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            GetStartedButton(
+                                onClick = onGetStartedClick,
+                                modifier = Modifier.width(if (isCompact) 240.dp else 280.dp),
+                                trackHeight = 60.dp,
+                                thumbSize = 48.dp
+                            )
+
+                            EmailSignInButton(onClick = onEmailSignInClick)
+                        }
                     }
+
+                    // Desktop Footer Info
+                    Text(
+                        text = "Available on macOS, Windows, Linux, Android & iOS",
+                        style = typography.labelSmall,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+                        fontSize = 12.sp
+                    )
                 }
 
-                // Desktop Footer Info
-                Text(
-                    text = "Available on macOS, Windows, Linux, Android & iOS",
-                    style = typography.labelSmall,
-                    color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-                    fontSize = 12.sp
-                )
-            }
-
-            // ── RIGHT COLUMN: Expanded Widescreen Avatar Grid (50% Width) ──
-            Box(
-                modifier = Modifier
-                    .weight(1.1f)
-                    .fillMaxHeight()
-                    .shadow(12.dp, RoundedCornerShape(32.dp))
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(colors.primaryContainer.copy(alpha = 0.5f), colors.surface)
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                DesktopAvatarGrid()
+                // ── RIGHT COLUMN: Expanded Widescreen Avatar Grid (50% Width) ──
+                Box(
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .fillMaxHeight()
+                        .shadow(12.dp, RoundedCornerShape(32.dp))
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(colors.primaryContainer.copy(alpha = 0.5f), colors.surface)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    DesktopAvatarGrid()
+                }
             }
         }
     }
@@ -182,46 +190,61 @@ private fun DesktopAvatarGrid() {
         label = "desktop_pulse"
     )
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Center Main Large Hero Avatar — user's real photo
-        DesktopAvatarBubble(
-            size = 180.dp,
-            imageRes = Res.drawable.avatar_rajamohan,
-            modifier = Modifier.scale(pulse),
-            borderColor = colors.surface
-        )
+        // Base canvas design size that the avatar layout and offsets were built for (480dp x 480dp)
+        val baseSize = 480.dp
+        val scale = minOf(
+            maxWidth / baseSize,
+            maxHeight / baseSize,
+            1.15f
+        ).coerceIn(0.4f, 1.15f)
 
-        // Floating Surrounding Avatars
-        DesktopAvatarBubble(
-            size = 120.dp,
-            imageRes = Res.drawable.avatar_woman_1,
-            modifier = Modifier.offset(x = (-150).dp, y = (-120).dp),
-            borderColor = colors.primary
-        )
+        Box(
+            modifier = Modifier
+                .size(baseSize)
+                .scale(scale),
+            contentAlignment = Alignment.Center
+        ) {
+            // Center Main Large Hero Avatar — user's real photo
+            DesktopAvatarBubble(
+                size = 180.dp,
+                imageRes = Res.drawable.avatar_rajamohan,
+                modifier = Modifier.scale(pulse),
+                borderColor = colors.surface
+            )
 
-        DesktopAvatarBubble(
-            size = 110.dp,
-            imageRes = Res.drawable.avatar_man_2,
-            modifier = Modifier.offset(x = 160.dp, y = (-100).dp)
-        )
+            // Floating Surrounding Avatars
+            DesktopAvatarBubble(
+                size = 120.dp,
+                imageRes = Res.drawable.avatar_woman_1,
+                modifier = Modifier.offset(x = (-150).dp, y = (-120).dp),
+                borderColor = colors.primary
+            )
 
-        DesktopAvatarBubble(
-            size = 100.dp,
-            imageRes = Res.drawable.avatar_woman_2,
-            modifier = Modifier.offset(x = (-160).dp, y = 110.dp)
-        )
+            DesktopAvatarBubble(
+                size = 110.dp,
+                imageRes = Res.drawable.avatar_man_2,
+                modifier = Modifier.offset(x = 160.dp, y = (-100).dp)
+            )
 
-        DesktopAvatarBubble(
-            size = 115.dp,
-            imageRes = Res.drawable.avatar_man_3,
-            modifier = Modifier.offset(x = 150.dp, y = 120.dp),
-            borderColor = colors.primary
-        )
+            DesktopAvatarBubble(
+                size = 100.dp,
+                imageRes = Res.drawable.avatar_woman_2,
+                modifier = Modifier.offset(x = (-160).dp, y = 110.dp)
+            )
+
+            DesktopAvatarBubble(
+                size = 115.dp,
+                imageRes = Res.drawable.avatar_man_3,
+                modifier = Modifier.offset(x = 150.dp, y = 120.dp),
+                borderColor = colors.primary
+            )
+        }
     }
 }
 
@@ -235,6 +258,7 @@ private fun DesktopAvatarBubble(
     Box(
         modifier = modifier
             .size(size)
+            .aspectRatio(1f)
             .shadow(8.dp, CircleShape)
             .clip(CircleShape)
             .border(if (borderColor != Color.Transparent) 4.dp else 0.dp, borderColor, CircleShape),
@@ -244,7 +268,9 @@ private fun DesktopAvatarBubble(
             painter = painterResource(imageRes),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .aspectRatio(1f)
         )
     }
 }

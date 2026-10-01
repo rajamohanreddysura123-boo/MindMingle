@@ -638,13 +638,15 @@ internal class MindMingleFirebaseProvider {
         return reactivateAt
     }
 
-    /** Clears a finished deactivation. Rejected by the rules while the window is still running. */
+    /** Clears deactivation and reactivates the account. */
     suspend fun clearDeactivation(uid: String) {
-        firestore.collection("users").document(uid).update(
-            "isDeactivated" to false,
-            "deactivatedAt" to 0L,
-            "reactivateAt" to 0L
-        )
+        deleteQuietly {
+            firestore.collection("users").document(uid).update(
+                "isDeactivated" to false,
+                "deactivatedAt" to 0L,
+                "reactivateAt" to 0L
+            )
+        }
     }
 
     /**
@@ -900,6 +902,48 @@ internal class MindMingleFirebaseProvider {
 
     suspend fun isUidBanned(uid: String): Boolean {
         return firestore.collection("bannedUids").document(uid).get().exists
+    }
+
+    suspend fun getBannedUid(uid: String): BannedUidDto? {
+        return try {
+            val doc = firestore.collection("bannedUids").document(uid).get()
+            if (doc.exists) doc.data<BannedUidDto>() else null
+        } catch (e: Exception) {
+            Napier.w(throwable = e, tag = TAG) { "getBannedUid failed for uid=$uid" }
+            null
+        }
+    }
+
+    /**
+     * Resets a previously deleted account so the verified user can start freshly.
+     * Clears deletion markers, pending deletion requests, and previous profile fields.
+     */
+    suspend fun resetDeletedAccount(uid: String) {
+        deleteQuietly { firestore.collection("deletionRequests").document(uid).delete() }
+        deleteQuietly { firestore.collection("bannedUids").document(uid).delete() }
+        val userDoc = getUserById(uid)
+        if (userDoc != null) {
+            deleteQuietly {
+                firestore.collection("users").document(uid).update(
+                    "isDeletionRequested" to false,
+                    "deletionRequestedAt" to 0L,
+                    "isProfileComplete" to false,
+                    "photoUrls" to emptyList<String>(),
+                    "avatarUrl" to "",
+                    "bio" to "",
+                    "headline" to "",
+                    "occupation" to "",
+                    "experienceLevel" to "",
+                    "lookingFor" to "",
+                    "interests" to emptyList<String>(),
+                    "details" to emptyMap<String, String>(),
+                    "selections" to emptyMap<String, List<String>>(),
+                    "isDeactivated" to false,
+                    "deactivatedAt" to 0L,
+                    "reactivateAt" to 0L
+                )
+            }
+        }
     }
 
     // ---------------------------------------------------------------------

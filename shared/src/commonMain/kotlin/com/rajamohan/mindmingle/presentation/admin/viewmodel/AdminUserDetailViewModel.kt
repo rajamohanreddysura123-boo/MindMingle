@@ -30,7 +30,9 @@ data class AdminUserDetailUiState(
     val isSubscriptionMutating: Boolean = false,
     val subscriptionMessage: String = "",
     /** Set after a successful unban, so the screen can say something happened. */
-    val banMessage: String = ""
+    val banMessage: String = "",
+    val successTitle: String = "",
+    val successMessage: String = ""
 ) {
     val hasActivePlan: Boolean get() = billing?.isActive == true
 
@@ -89,7 +91,12 @@ class AdminUserDetailViewModel(
             adminSetSubscriptionUseCase(uid = uid, plan = plan, days = days).fold(
                 onSuccess = {
                     _uiState.update {
-                        it.copy(isSubscriptionMutating = false, subscriptionMessage = "Granted ${plan.label}")
+                        it.copy(
+                            isSubscriptionMutating = false,
+                            subscriptionMessage = "Granted ${plan.label} (${days} days)",
+                            successTitle = "Subscription Granted",
+                            successMessage = "Successfully granted ${plan.label} ($days days) to ${_uiState.value.user?.name?.ifBlank { "user" } ?: "user"}."
+                        )
                     }
                     loadBilling(uid)
                 },
@@ -112,7 +119,13 @@ class AdminUserDetailViewModel(
                     _uiState.update {
                         it.copy(
                             isSubscriptionMutating = false,
-                            subscriptionMessage = if (immediate) "Plan ended now" else "Plan ends at period end"
+                            subscriptionMessage = if (immediate) "Plan ended now" else "Plan ends at period end",
+                            successTitle = if (immediate) "Subscription Ended" else "Subscription Cancelled",
+                            successMessage = if (immediate) {
+                                "The subscription has been ended immediately. Ads and limitations have been restored."
+                            } else {
+                                "Subscription cancelled at period end. The user will keep active benefits until ${_uiState.value.planEndsLabel}."
+                            }
                         )
                     }
                     loadBilling(uid)
@@ -133,7 +146,18 @@ class AdminUserDetailViewModel(
         viewModelScope.launch {
             setUserDisabledUseCase(user.uid, nextDisabled)
                 .onSuccess {
-                    _uiState.update { it.copy(isMutating = false, user = user.copy(isDisabled = nextDisabled)) }
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            user = user.copy(isDisabled = nextDisabled),
+                            successTitle = if (nextDisabled) "Account Disabled" else "Account Re-enabled",
+                            successMessage = if (nextDisabled) {
+                                "Account has been disabled. The user is now blocked from signing in."
+                            } else {
+                                "Account has been re-enabled. The user can now access their account."
+                            }
+                        )
+                    }
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(isMutating = false, error = e.message ?: "Update failed") }
@@ -148,9 +172,6 @@ class AdminUserDetailViewModel(
      * Firebase Auth record, so the uid is blocked instead and every sign-in path turns it away.
      * Until now nothing in the app could remove one — an admin could ban and not unban, and the
      * only way back was the Firebase Console.
-     *
-     * There is deliberately no confirmation: unbanning is the reversible direction, and the row
-     * can be re-banned by running the purge again.
      */
     fun unbanUser() {
         val user = _uiState.value.user ?: return
@@ -158,7 +179,14 @@ class AdminUserDetailViewModel(
         viewModelScope.launch {
             unbanUserUseCase(user.uid)
                 .onSuccess {
-                    _uiState.update { it.copy(isMutating = false, banMessage = "Ban lifted — this uid can sign in again") }
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            banMessage = "Ban lifted — this uid can sign in again",
+                            successTitle = "Ban Lifted",
+                            successMessage = "Ban has been lifted successfully. This user can now sign in again."
+                        )
+                    }
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(isMutating = false, error = e.message ?: "Unban failed") }
@@ -177,11 +205,26 @@ class AdminUserDetailViewModel(
         viewModelScope.launch {
             deleteUserCascadeUseCase(user.uid, adminUid)
                 .onSuccess {
-                    _uiState.update { it.copy(isMutating = false, isDeleted = true) }
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            isDeleted = true,
+                            successTitle = "Account Deleted",
+                            successMessage = "The account and associated data have been permanently deleted."
+                        )
+                    }
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(isMutating = false, error = e.message ?: "Delete failed") }
                 }
         }
+    }
+
+    fun dismissSuccessDialog() {
+        _uiState.update { it.copy(successTitle = "", successMessage = "") }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(error = "") }
     }
 }

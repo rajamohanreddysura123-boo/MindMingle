@@ -16,6 +16,8 @@ data class DeletionRequest(
 
     val requestedLabel: String get() = if (requestedAt > 0L) formatUtcDate(requestedAt) else "—"
 
+    val deletedLabel: String get() = if (deletedAt > 0L) formatUtcDate(deletedAt) else "—"
+
     /** Whole days the request has been sitting in the queue — the admin list sorts on this. */
     fun waitingDaysAt(nowMillis: Long): Int {
         if (requestedAt <= 0L) return 0

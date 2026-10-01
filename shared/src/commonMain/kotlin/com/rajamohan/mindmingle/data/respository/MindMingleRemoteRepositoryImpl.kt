@@ -309,11 +309,20 @@ internal class MindMingleRemoteRepositoryImpl(
 
     override suspend fun checkAccountStatus(uid: String): AccountStatus {
         return try {
-            if (mindMingleFirebaseProvider.isUidBanned(uid)) {
-                return AccountStatus(
-                    isBlocked = true,
-                    message = "This account has been removed. Contact support if you believe this is a mistake."
-                )
+            val bannedInfo = mindMingleFirebaseProvider.getBannedUid(uid)
+            if (bannedInfo != null) {
+                val isDeletionBan = bannedInfo.reason.contains("delet", ignoreCase = true) ||
+                    bannedInfo.reason.contains("purge", ignoreCase = true)
+                if (isDeletionBan) {
+                    // Account was deleted previously. Start freshly!
+                    mindMingleFirebaseProvider.resetDeletedAccount(uid)
+                    return AccountStatus(isBlocked = false)
+                } else {
+                    return AccountStatus(
+                        isBlocked = true,
+                        message = "This account has been removed. Contact support if you believe this is a mistake."
+                    )
+                }
             }
             val user = mindMingleFirebaseProvider.getUserById(uid)?.toDomain()
             if (user?.isDisabled == true) {
@@ -323,25 +332,14 @@ internal class MindMingleRemoteRepositoryImpl(
                 )
             }
             if (user?.isDeletionRequested == true) {
-                return AccountStatus(
-                    isBlocked = true,
-                    message = "This account has been deleted."
-                )
+                // If the account was deleted, next time start freshly!
+                mindMingleFirebaseProvider.resetDeletedAccount(uid)
+                return AccountStatus(isBlocked = false)
             }
-            if (user != null) {
-                val now = nowMillis()
-                if (user.isDeactivatedAt(now)) {
-                    return AccountStatus(
-                        isBlocked = true,
-                        message = "Your account is deactivated until ${formatUtcDate(user.reactivateAt)}. " +
-                            "You can sign in again after that date."
-                    )
-                }
-                if (user.isDeactivationExpiredAt(now)) {
-                    // Window is over — clearing the flags here is the reactivation. The rules only
-                    // accept this write once reactivateAt has passed, so it cannot be rushed.
-                    mindMingleFirebaseProvider.clearDeactivation(uid)
-                }
+            if (user != null && user.isDeactivated) {
+                // If account was suspended/deactivated a few days, after verification, restore normally
+                mindMingleFirebaseProvider.clearDeactivation(uid)
+                return AccountStatus(isBlocked = false)
             }
             AccountStatus(isBlocked = false)
         } catch (e: Exception) {

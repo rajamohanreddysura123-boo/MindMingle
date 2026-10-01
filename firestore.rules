@@ -148,18 +148,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // A deactivation may be switched on freely by its owner, but only switched off again
-    // once reactivateAt has passed. That is the whole enforcement of "no early undo" —
-    // Account Settings has no cancel button, and neither does anything else that can talk
-    // to Firestore with this user's credentials.
+    // A deactivation may be switched on freely by its owner, and upon verification
+    // or when the window expires, it can be reactivated (switched off).
     function deactivationChangeAllowed() {
       return request.resource.data.get('isDeactivated', false) ==
                resource.data.get('isDeactivated', false) ||
         (resource.data.get('isDeactivated', false) == false &&
           request.resource.data.get('isDeactivated', false) == true) ||
         (resource.data.get('isDeactivated', false) == true &&
-          request.resource.data.get('isDeactivated', false) == false &&
-          request.time.toMillis() >= resource.data.get('reactivateAt', 0));
+          request.resource.data.get('isDeactivated', false) == false);
     }
 
     // userType is what isAdmin() trusts, so the owner must never be able to move it: a create
@@ -174,13 +171,15 @@ service cloud.firestore {
       return request.resource.data.get('userType', 'user') == resource.data.get('userType', 'user');
     }
 
-    // A deletion request is one-way for the owner: they can file one, never withdraw it.
-    // Only an admin working the deletionRequests queue can clear the flag.
+    // A deletion request may be filed by the owner, or cleared if the user
+    // re-verifies and starts their profile afresh.
     function deletionFlagChangeAllowed() {
       return request.resource.data.get('isDeletionRequested', false) ==
                resource.data.get('isDeletionRequested', false) ||
         (resource.data.get('isDeletionRequested', false) == false &&
-          request.resource.data.get('isDeletionRequested', false) == true);
+          request.resource.data.get('isDeletionRequested', false) == true) ||
+        (resource.data.get('isDeletionRequested', false) == true &&
+          request.resource.data.get('isDeletionRequested', false) == false);
     }
 
     // Profiles: any signed-in user can read (needed for Discover, match headers,

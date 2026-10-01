@@ -543,3 +543,124 @@ fun SendIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
         drawPath(path, color = color)
     }
 }
+
+@Composable
+fun TrashIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeWidth = w * 0.085f
+
+        // Top lid bar
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(w * 0.16f, h * 0.26f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.84f, h * 0.26f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+
+        // Handle
+        val handle = Path().apply {
+            moveTo(w * 0.36f, h * 0.26f)
+            lineTo(w * 0.36f, h * 0.16f)
+            lineTo(w * 0.64f, h * 0.16f)
+            lineTo(w * 0.64f, h * 0.26f)
+        }
+        drawPath(
+            path = handle,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+
+        // Bin body
+        val bin = Path().apply {
+            moveTo(w * 0.24f, h * 0.26f)
+            lineTo(w * 0.28f, h * 0.80f)
+            cubicTo(w * 0.29f, h * 0.88f, w * 0.34f, h * 0.90f, w * 0.42f, h * 0.90f)
+            lineTo(w * 0.58f, h * 0.90f)
+            cubicTo(w * 0.66f, h * 0.90f, w * 0.71f, h * 0.88f, w * 0.72f, h * 0.80f)
+            lineTo(w * 0.76f, h * 0.26f)
+        }
+        drawPath(
+            path = bin,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+
+        // Inner vertical slats
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(w * 0.40f, h * 0.40f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.40f, h * 0.76f),
+            strokeWidth = strokeWidth * 0.8f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(w * 0.60f, h * 0.40f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.60f, h * 0.76f),
+            strokeWidth = strokeWidth * 0.8f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun SearchIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeWidth = w * 0.09f
+        val center = androidx.compose.ui.geometry.Offset(w * 0.42f, h * 0.42f)
+        val radius = w * 0.26f
+
+        drawCircle(
+            color = color,
+            center = center,
+            radius = radius,
+            style = Stroke(width = strokeWidth)
+        )
+
+        // Handle
+        drawLine(
+            color = color,
+            start = androidx.compose.ui.geometry.Offset(w * 0.61f, h * 0.61f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.86f, h * 0.86f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun RefreshIcon(color: Color, modifier: Modifier = defaultIconModifier()) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeWidth = w * 0.085f
+
+        val arcRect = androidx.compose.ui.geometry.Rect(w * 0.16f, h * 0.16f, w * 0.84f, h * 0.84f)
+        drawArc(
+            color = color,
+            startAngle = 40f,
+            sweepAngle = 270f,
+            useCenter = false,
+            topLeft = arcRect.topLeft,
+            size = arcRect.size,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+
+        // Arrow head at 40 degrees
+        val arrow = Path().apply {
+            moveTo(w * 0.76f, h * 0.15f)
+            lineTo(w * 0.84f, h * 0.35f)
+            lineTo(w * 0.64f, h * 0.35f)
+        }
+        drawPath(
+            path = arrow,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}

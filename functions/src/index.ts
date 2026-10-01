@@ -144,6 +144,47 @@ export const verifyEmailOtp = onCall({ serviceAccount: OTP_SIGNER_SERVICE_ACCOUN
 
   const customToken = await admin.auth().createCustomToken(userRecord.uid);
 
+  // If the account was previously deleted or suspended, reset / reactivate on successful verification
+  try {
+    const userDocRef = db.collection("users").doc(userRecord.uid);
+    const userSnap = await userDocRef.get();
+    if (userSnap.exists) {
+      const data = userSnap.data() || {};
+      const updates: Record<string, any> = {};
+      if (data.isDeletionRequested) {
+        updates.isDeletionRequested = false;
+        updates.deletionRequestedAt = 0;
+        updates.isProfileComplete = false;
+        updates.photoUrls = [];
+        updates.avatarUrl = "";
+        updates.bio = "";
+        updates.headline = "";
+      }
+      if (data.isDeactivated) {
+        updates.isDeactivated = false;
+        updates.deactivatedAt = 0;
+        updates.reactivateAt = 0;
+      }
+      if (Object.keys(updates).length > 0) {
+        await userDocRef.update(updates);
+      }
+      if (data.isDeletionRequested) {
+        await db.collection("deletionRequests").doc(userRecord.uid).delete().catch(() => {});
+      }
+    }
+    const banDocRef = db.collection("bannedUids").doc(userRecord.uid);
+    const banSnap = await banDocRef.get();
+    if (banSnap.exists) {
+      const banData = banSnap.data() || {};
+      const reason = String(banData.reason || "").toLowerCase();
+      if (reason.includes("delet") || reason.includes("purge")) {
+        await banDocRef.delete().catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error("Auto-reactivation in verifyEmailOtp failed:", err);
+  }
+
   // Deleted only once the token exists. Deleting first meant any failure past this point — the
   // signing permission error this project actually hit — burned a code the user had typed
   // correctly, forcing a new email for every retry. The replay window is the few milliseconds

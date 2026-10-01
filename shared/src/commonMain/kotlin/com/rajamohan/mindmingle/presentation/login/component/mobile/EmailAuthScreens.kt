@@ -51,31 +51,30 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rajamohan.mindmingle.presentation.common.icon.CheckIcon
+import com.rajamohan.mindmingle.presentation.common.icon.EnvelopeIcon
 import com.rajamohan.mindmingle.presentation.common.icon.LockIcon
 import com.rajamohan.mindmingle.presentation.theme.Spacing
 import kotlinx.coroutines.delay
 
 /**
- * Email + password sign-in. Desktop's only way in (no working Google OAuth on JVM) and mobile's
- * alternative to Google. The same screen registers: [isNewAccount] flips the button and which
- * event the caller fires. Password rules are Firebase's — 6 characters minimum.
+ * Passwordless Email OTP sign-in. Mails a 6-digit code to the user's email address.
+ * Matches existing accounts (including Google Sign-In users) so they access the exact same account.
+ * Completely eliminates password creation and storage.
  */
 @Composable
 fun EmailPasswordScreen(
     isSubmitting: Boolean = false,
     errorMessage: String = "",
-    onSubmit: (email: String, password: String, isNewAccount: Boolean) -> Unit,
+    onRequestCode: (email: String) -> Unit = {},
+    onSubmit: (email: String, password: String, isNewAccount: Boolean) -> Unit = { _, _, _ -> },
     onBack: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isNewAccount by remember { mutableStateOf(false) }
-    val isValidEmail = remember(email) { Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email) }
-    val isValidPassword = password.length >= 6
-    val canSubmit = isValidEmail && isValidPassword && !isSubmitting
+    val isValidEmail = remember(email) { Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email.trim()) }
+    val canSubmit = isValidEmail && !isSubmitting
 
     Surface(modifier = Modifier.fillMaxSize(), color = colors.background) {
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
@@ -93,13 +92,13 @@ fun EmailPasswordScreen(
                         .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
                     contentAlignment = Alignment.Center
                 ) {
-                    LockIcon(color = Color.White, modifier = Modifier.size(36.dp))
+                    EnvelopeIcon(color = Color.White, modifier = Modifier.size(36.dp))
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = if (isNewAccount) "Create your account" else "Sign in with Email",
+                    text = "Sign in with OTP",
                     style = typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = colors.onBackground,
@@ -107,14 +106,11 @@ fun EmailPasswordScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = if (isNewAccount) {
-                        "Pick a password of at least 6 characters."
-                    } else {
-                        "Enter your email and password to continue."
-                    },
+                    text = "Enter your email. We'll send a 6-digit verification code — no password needed.",
                     style = typography.bodyMedium,
                     color = colors.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    lineHeight = 22.sp
                 )
 
                 Spacer(modifier = Modifier.height(28.dp))
@@ -148,47 +144,15 @@ fun EmailPasswordScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(colors.surfaceVariant.copy(alpha = 0.4f))
-                        .padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    BasicTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        textStyle = typography.bodyLarge.copy(color = colors.onSurface),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth(),
-                        decorationBox = { inner ->
-                            if (password.isEmpty()) {
-                                Text(
-                                    text = "Password",
-                                    style = typography.bodyLarge,
-                                    color = colors.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
-                            inner()
-                        }
-                    )
-                }
-
                 if (errorMessage.isNotBlank()) {
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(text = errorMessage, style = typography.bodySmall, color = colors.error, textAlign = TextAlign.Center)
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Surface(
-                    onClick = { if (canSubmit) onSubmit(email.trim(), password, isNewAccount) },
+                    onClick = { if (canSubmit) onRequestCode(email.trim()) },
                     enabled = canSubmit,
                     shape = RoundedCornerShape(50),
                     color = if (canSubmit) colors.primary else colors.outlineVariant.copy(alpha = 0.4f),
@@ -199,7 +163,7 @@ fun EmailPasswordScreen(
                             CircularProgressIndicator(color = colors.onPrimary, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
                         } else {
                             Text(
-                                text = if (isNewAccount) "Create account" else "Continue",
+                                text = "Send Code",
                                 style = typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (canSubmit) colors.onPrimary else colors.onSurfaceVariant.copy(alpha = 0.5f)
@@ -208,17 +172,7 @@ fun EmailPasswordScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                Text(
-                    text = if (isNewAccount) "Already have an account? Sign in" else "New here? Create an account",
-                    style = typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.primary,
-                    modifier = Modifier.clickable(enabled = !isSubmitting) { isNewAccount = !isNewAccount }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
                     text = "Back",
@@ -327,6 +281,9 @@ fun EmailOtpVerificationScreen(
                         onValueChange = {
                             if (it.length <= codeLength && it.all { char -> char.isDigit() }) {
                                 otpValue = it
+                                if (it.length < codeLength) {
+                                    hasSubmitted = false
+                                }
                                 if (it.length == codeLength && !hasSubmitted && !isVerifying && !isSuccess) {
                                     hasSubmitted = true
                                     onCodeComplete(it)
@@ -334,6 +291,8 @@ fun EmailOtpVerificationScreen(
                             }
                         },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        textStyle = typography.bodyLarge.copy(color = Color.Transparent),
+                        cursorBrush = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
                         modifier = Modifier.fillMaxWidth()
                     )
 

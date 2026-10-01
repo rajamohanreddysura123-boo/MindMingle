@@ -96,7 +96,8 @@ async function resolveCountry(uid, catalog, hint) {
     return catalog.defaultCountry;
 }
 async function isAdmin(uid) {
-    return (await db().collection("admins").doc(uid).get()).exists;
+    const doc = await db().collection("users").doc(uid).get();
+    return doc.get("userType") === "admin";
 }
 function authHeader() {
     const pair = `${razorpayKeyId.value()}:${razorpayKeySecret.value()}`;

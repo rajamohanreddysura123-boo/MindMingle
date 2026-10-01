@@ -160,7 +160,7 @@ internal class ProfileSetupViewModel(
         _uiState.update { it.copy(isLoadingExisting = true) }
         viewModelScope.launch {
             val user = mindMingleRemoteRepository.getUser(uid)
-            if (user != null) {
+            if (user != null && !user.isDeletionRequested) {
                 preservedAvatarUrl = user.avatarUrl
                 preservedIsDisabled = user.isDisabled
                 preservedIsDeactivated = user.isDeactivated
@@ -406,11 +406,11 @@ internal class ProfileSetupViewModel(
                 longitude = state.longitude,
                 isProfileComplete = true,
                 isDisabled = preservedIsDisabled,
-                isDeactivated = preservedIsDeactivated,
-                deactivatedAt = preservedDeactivatedAt,
-                reactivateAt = preservedReactivateAt,
-                isDeletionRequested = preservedIsDeletionRequested,
-                deletionRequestedAt = preservedDeletionRequestedAt,
+                isDeactivated = false,
+                deactivatedAt = 0L,
+                reactivateAt = 0L,
+                isDeletionRequested = false,
+                deletionRequestedAt = 0L,
                 createdAt = preservedCreatedAt
             )
 
