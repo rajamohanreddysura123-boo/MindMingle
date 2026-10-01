@@ -746,6 +746,12 @@ internal class MindMingleFirebaseProvider {
     suspend fun adminPurgeUser(uid: String, adminUid: String, reason: String) {
         val user = getUserById(uid)
 
+        // Write the bannedUids tombstone and update deletion request first while credentials/admin checks are intact
+        firestore.collection("bannedUids").document(uid)
+            .set(BannedUidDto(reason = reason, bannedBy = adminUid))
+
+        markDeletionRequestDone(uid = uid, adminUid = adminUid)
+
         // Best-effort and expected to fail: storage.rules allows a photo delete only from its
         // own owner, so an admin's attempt is denied and the files stay behind as orphans. The
         // profile doc holding their URLs is deleted below, which is what makes them unreachable.
@@ -758,11 +764,6 @@ internal class MindMingleFirebaseProvider {
         deleteOwnDevices(uid)
         deleteQuietly { firestore.collection("notificationPrefs").document(uid).delete() }
         deleteQuietly { firestore.collection("users").document(uid).delete() }
-
-        firestore.collection("bannedUids").document(uid)
-            .set(BannedUidDto(reason = reason, bannedBy = adminUid))
-
-        markDeletionRequestDone(uid = uid, adminUid = adminUid)
     }
 
     private suspend fun purgeLikesBothSides(uid: String) {

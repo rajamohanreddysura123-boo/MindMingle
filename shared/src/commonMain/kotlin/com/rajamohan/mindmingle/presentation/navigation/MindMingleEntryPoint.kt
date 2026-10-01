@@ -66,7 +66,11 @@ private fun MindMingleEntryPointContent(isDesktopWidth: Boolean) {
         if (authUiState.isSuccess) {
             val uid = authUiState.uid.orEmpty()
             currentScreen = if (authUiState.isAdmin) {
-                ScreenState.Admin
+                ScreenState.Admin(
+                    uid = uid,
+                    adminName = authUiState.prefillName.orEmpty(),
+                    adminEmail = authUiState.email.orEmpty()
+                )
             } else if (authUiState.profileComplete) {
                 ScreenState.Home(
                     uid = uid,
@@ -202,6 +206,9 @@ private fun MindMingleEntryPointContent(isDesktopWidth: Boolean) {
             }
             is ScreenState.Admin -> {
                 AdminEntryPoint(
+                    adminUid = targetScreen.uid,
+                    adminName = targetScreen.adminName,
+                    adminEmail = targetScreen.adminEmail,
                     onSignOut = {
                         authViewModel.onEvent(AuthEvent.ResetState)
                         currentScreen = ScreenState.Onboarding

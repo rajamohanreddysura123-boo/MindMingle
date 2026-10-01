@@ -122,6 +122,13 @@ private fun MobileProfileSetupScreen(
         }
     }
 
+    // If loadExisting finds the profile is already complete (e.g. the user signed in via a
+    // different auth method like email OTP after originally using Google), skip the setup wizard
+    // and go directly to Home. isEditMode intentionally bypasses this so edit always shows the form.
+    LaunchedEffect(uiState.isAlreadyComplete) {
+        if (uiState.isAlreadyComplete && !isEditMode) onProfileSaved(uiState.name)
+    }
+
     LaunchedEffect(uiState.isSaved) {
         if (uiState.isSaved) onProfileSaved(uiState.name)
     }

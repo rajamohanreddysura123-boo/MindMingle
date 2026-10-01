@@ -226,21 +226,29 @@ service cloud.firestore {
     // Outbound likes: only the liker can write into their own "sentTo" list.
     // Read is restricted to the liker (not exposed to the target directly).
     // Admin delete needed for cascade cleanup on account deletion.
-    match /likes/{fromUid}/sentTo/{toUid} {
-      allow read: if isOwner(fromUid) || isAdmin();
-      allow create: if isOwner(fromUid);
-      allow update: if false;
-      allow delete: if isOwner(fromUid) || isAdmin();
+    match /likes/{fromUid} {
+      allow read, write, delete: if isOwner(fromUid) || isAdmin();
+
+      match /sentTo/{toUid} {
+        allow read: if isOwner(fromUid) || isAdmin();
+        allow create: if isOwner(fromUid);
+        allow update: if false;
+        allow delete: if isOwner(fromUid) || isAdmin();
+      }
     }
 
     // Incoming likes mirror: written by the liker (fromUid) into the
     // recipient's (toUid) mailbox, but only the recipient can read it.
     // Admin delete needed for cascade cleanup on account deletion.
-    match /incomingLikes/{toUid}/from/{fromUid} {
-      allow read: if isOwner(toUid) || isAdmin();
-      allow create: if isOwner(fromUid);
-      allow update: if false;
-      allow delete: if isOwner(toUid) || isAdmin();
+    match /incomingLikes/{toUid} {
+      allow read, write, delete: if isOwner(toUid) || isAdmin();
+
+      match /from/{fromUid} {
+        allow read: if isOwner(toUid) || isAdmin();
+        allow create: if isOwner(fromUid);
+        allow update: if false;
+        allow delete: if isOwner(toUid) || isAdmin();
+      }
     }
 
     // Conversations, which replaced the old `matches` collection: the client writes

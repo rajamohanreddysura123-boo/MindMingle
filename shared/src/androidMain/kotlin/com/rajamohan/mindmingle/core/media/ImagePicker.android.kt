@@ -26,32 +26,40 @@ actual object ImagePicker {
         pendingContinuation = continuation
         pendingMaxCount = maxCount.coerceAtLeast(1)
 
-        activity.startActivityForResult(pickerIntent(pendingMaxCount), RC_PICK_IMAGES)
+        try {
+            activity.startActivityForResult(pickerIntent(pendingMaxCount), RC_PICK_IMAGES)
+        } catch (e: Exception) {
+            try {
+                activity.startActivityForResult(legacyPickerIntent(pendingMaxCount), RC_PICK_IMAGES)
+            } catch (e2: Exception) {
+                pendingContinuation = null
+                continuation.resume(emptyList())
+            }
+        }
 
         continuation.invokeOnCancellation { pendingContinuation = null }
     }
 
     /**
      * Android 13+ has a system photo picker that enforces a maximum selection itself: the user is
-     * told "select up to 3" and simply cannot pick a fourth. That is the whole reason to prefer it
-     * — the older ACTION_GET_CONTENT chooser lets someone pick ten and then silently loses seven,
-     * which reads as the app dropping their photos.
+     * told "select up to 3" and simply cannot pick a fourth.
      *
-     * Below 33 (minSdk here is 29) the chooser is the only option and the count is enforced by
-     * truncation in [handleActivityResult].
+     * Below 33 (minSdk here is 29) or when the system picker is missing (e.g. AOSP emulators),
+     * the chooser is the fallback option and count is enforced by truncation in [handleActivityResult].
      */
     private fun pickerIntent(maxCount: Int): Intent {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             return Intent(MediaStore.ACTION_PICK_IMAGES).apply {
                 type = "image/*"
-                // The extra is only valid for multi-select; asking for one photo means the
-                // single-select picker, which rejects the extra outright.
                 if (maxCount > 1) {
                     putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maxCount)
                 }
             }
         }
+        return legacyPickerIntent(maxCount)
+    }
 
+    private fun legacyPickerIntent(maxCount: Int): Intent {
         val chooser = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = "image/*"
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, maxCount > 1)

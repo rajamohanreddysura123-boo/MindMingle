@@ -193,7 +193,10 @@ internal class AuthViewModel(
         }
 
         // Skip Profile Setup when this uid already has a completed profile doc.
-        val existingUser = mindMingleRemoteRepository.getUser(uid)
+        // If the account was just reset (deletion cleared), treat it as incomplete so the
+        // user is always sent to ProfileSetup — the Firestore write from resetDeletedAccount
+        // may not yet be visible in the next read, and this is the correct UX regardless.
+        val existingUser = if (status.wasReset) null else mindMingleRemoteRepository.getUser(uid)
         val profileComplete = existingUser?.isProfileComplete == true
 
         // Admins sign in through the same flow as everyone else — what separates them is

@@ -31,12 +31,20 @@ private sealed class AdminScreenState {
  * admins authenticate through the same phone-OTP/Google flow as regular users.
  */
 @Composable
-fun AdminEntryPoint(onSignOut: () -> Unit) {
+fun AdminEntryPoint(
+    adminUid: String = "",
+    adminName: String = "",
+    adminEmail: String = "",
+    onSignOut: () -> Unit
+) {
     var currentScreen by remember { mutableStateOf<AdminScreenState>(AdminScreenState.Dashboard) }
 
     when (val screen = currentScreen) {
         AdminScreenState.Dashboard -> {
             AdminDashboardScreen(
+                adminUid = adminUid,
+                adminName = adminName,
+                adminEmail = adminEmail,
                 onManageUsers = { currentScreen = AdminScreenState.UserList },
                 onManagePricing = { currentScreen = AdminScreenState.PlanPricing },
                 onManageSubscribers = { currentScreen = AdminScreenState.Subscribers },

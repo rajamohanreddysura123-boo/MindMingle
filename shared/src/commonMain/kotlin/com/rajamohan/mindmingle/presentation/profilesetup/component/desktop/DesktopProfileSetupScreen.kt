@@ -87,6 +87,10 @@ fun DesktopProfileSetupScreen(
         }
     }
 
+    LaunchedEffect(uiState.isAlreadyComplete) {
+        if (uiState.isAlreadyComplete && !isEditMode) onProfileSaved(uiState.name)
+    }
+
     LaunchedEffect(uiState.isSaved) {
         if (uiState.isSaved) onProfileSaved(uiState.name)
     }

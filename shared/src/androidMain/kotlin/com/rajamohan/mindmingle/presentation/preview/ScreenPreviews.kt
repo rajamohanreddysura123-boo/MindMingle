@@ -390,6 +390,9 @@ private fun DesktopPremiumPreview() = PreviewHost { DesktopPremiumScreen(uid = "
 @Composable
 private fun AdminDashboardPreview() = PreviewHost {
     AdminDashboardScreen(
+        adminUid = "preview-uid",
+        adminName = "Rajamohan Reddy",
+        adminEmail = "admin@mindmingle.app",
         onManageUsers = {},
         onManagePricing = {},
         onManageSubscribers = {},

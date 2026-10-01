@@ -39,7 +39,11 @@ sealed class ScreenState {
         val userName: String = "",
         val userEmail: String = ""
     ) : ScreenState()
-    object Admin : ScreenState()
+    data class Admin(
+        val uid: String = "",
+        val adminName: String = "",
+        val adminEmail: String = ""
+    ) : ScreenState()
 }
 
 /**

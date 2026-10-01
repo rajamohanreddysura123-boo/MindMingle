@@ -314,9 +314,9 @@ internal class MindMingleRemoteRepositoryImpl(
                 val isDeletionBan = bannedInfo.reason.contains("delet", ignoreCase = true) ||
                     bannedInfo.reason.contains("purge", ignoreCase = true)
                 if (isDeletionBan) {
-                    // Account was deleted previously. Start freshly!
+                    // Account was purged/banned for deletion — wipe the doc and let the user restart.
                     mindMingleFirebaseProvider.resetDeletedAccount(uid)
-                    return AccountStatus(isBlocked = false)
+                    return AccountStatus(isBlocked = false, wasReset = true)
                 } else {
                     return AccountStatus(
                         isBlocked = true,
@@ -332,9 +332,9 @@ internal class MindMingleRemoteRepositoryImpl(
                 )
             }
             if (user?.isDeletionRequested == true) {
-                // If the account was deleted, next time start freshly!
+                // User had requested account deletion — clear the flag and let them rebuild their profile.
                 mindMingleFirebaseProvider.resetDeletedAccount(uid)
-                return AccountStatus(isBlocked = false)
+                return AccountStatus(isBlocked = false, wasReset = true)
             }
             if (user != null && user.isDeactivated) {
                 // If account was suspended/deactivated a few days, after verification, restore normally

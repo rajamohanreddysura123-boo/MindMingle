@@ -175,6 +175,9 @@ internal class ProfileSetupViewModel(
                 _uiState.update {
                     it.copy(
                         isLoadingExisting = false,
+                        // If the profile is already fully complete, signal the screen to navigate
+                        // directly to Home instead of making the user re-submit the entire wizard.
+                        isAlreadyComplete = user.isProfileComplete,
                         name = user.name,
                         phone = parsedPhone,
                         selectedCountry = parsedCountry,

@@ -83,6 +83,8 @@ internal data class ProfileSetupUiState(
     val isLoadingExisting: Boolean = false,
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
+    /** True when LoadExisting finds an already-complete profile — signals the screen to skip setup and navigate directly to Home. */
+    val isAlreadyComplete: Boolean = false,
     val error: String = "",
     val currentStep: Int = 0
 ) {
